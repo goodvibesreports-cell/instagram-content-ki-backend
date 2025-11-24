@@ -1,0 +1,31 @@
+{
+  "name": "content-ki-backend",
+  "version": "1.0.0",
+  "description": "Backend für Content-KI Web-App – Upload, KI-Vorschläge, Export",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "keywords": [
+    "content",
+    "ki",
+    "openai",
+    "express",
+    "upload"
+  ],
+  "author": "Dein Name",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "express-fileupload": "^1.4.0",
+    "openai": "^4.22.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}
