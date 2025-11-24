@@ -1,3 +1,6 @@
+// Backend: Node.js + Express für Instagram-Content-KI
+// Speicherort: instagram-content-ki-backend/index.js
+
 import express from 'express';
 import multer from 'multer';
 import cors from 'cors';
@@ -11,7 +14,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// OpenAI-Client initialisieren
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// Multer für Datei-Uploads
 const upload = multer({ dest: 'uploads/' });
 
 // Speicher für hochgeladene Posts
@@ -20,10 +26,12 @@ let uploadedPosts = [];
 // -------------------------
 // Healthcheck
 // -------------------------
-app.get('/healthz', (req, res) => res.json({ status: 'OK' }));
+app.get('/healthz', (req, res) => {
+  res.json({ status: 'OK' });
+});
 
 // -------------------------
-// Datei-Upload
+// Datei-Upload (JSON)
 // -------------------------
 app.post('/upload', upload.single('file'), async (req, res) => {
   try {
@@ -34,7 +42,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
 
     try {
       json = JSON.parse(data);
-    } catch (err) {
+    } catch {
       return res.status(400).json({ error: 'Invalid JSON format' });
     }
 
@@ -63,7 +71,7 @@ app.post('/generate-prompts', async (req, res) => {
         { role: 'system', content: 'Du bist ein professioneller Social Media Content Creator.' },
         {
           role: 'user',
-          content: `Analysiere diese Posts und generiere 3-5 professionelle, virale Prompts für Instagram-Reels:\n${JSON.stringify(uploadedPosts)}`
+          content: `Analysiere diese Posts und generiere 3-5 virale Prompts für Instagram-Reels:\n${JSON.stringify(uploadedPosts)}`
         }
       ],
       max_tokens: 400
@@ -71,7 +79,6 @@ app.post('/generate-prompts', async (req, res) => {
 
     const prompts = response.choices.map(c => c.message.content);
     res.json({ prompts });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Prompt generation failed' });
@@ -107,7 +114,6 @@ app.post('/generate-video-ideas', async (req, res) => {
     }
 
     res.json({ videoIdeas });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Video ideas generation failed' });
@@ -115,7 +121,7 @@ app.post('/generate-video-ideas', async (req, res) => {
 });
 
 // -------------------------
-// Optional: Manuelle Generierung (/generate)
+// Manuelle Generierung mit eigenem Prompt
 // -------------------------
 app.post('/generate', async (req, res) => {
   try {
@@ -137,6 +143,8 @@ app.post('/generate', async (req, res) => {
   }
 });
 
+// -------------------------
+// Server starten
 // -------------------------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
