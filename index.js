@@ -1,6 +1,3 @@
-// Backend: Node.js + Express für Instagram-Content-KI
-// Speicherort: instagram-content-ki-backend/index.js
-
 import express from 'express';
 import multer from 'multer';
 import cors from 'cors';
@@ -14,38 +11,27 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// OpenAI-Client initialisieren
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// Multer für Datei-Uploads
 const upload = multer({ dest: 'uploads/' });
 
 // Speicher für hochgeladene Posts
 let uploadedPosts = [];
 
-// -------------------------
 // Healthcheck
-// -------------------------
-app.get('/healthz', (req, res) => {
-  res.json({ status: 'OK' });
-});
+app.get('/healthz', (req, res) => res.json({ status: 'OK' }));
 
-// -------------------------
-// Datei-Upload (JSON)
-// -------------------------
+// Datei-Upload
 app.post('/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     const data = await fs.readFile(req.file.path, 'utf-8');
     let json;
-
     try {
       json = JSON.parse(data);
-    } catch {
+    } catch (err) {
       return res.status(400).json({ error: 'Invalid JSON format' });
     }
-
     if (!Array.isArray(json)) return res.status(400).json({ error: 'JSON must be an array of posts' });
 
     uploadedPosts = json;
@@ -58,23 +44,25 @@ app.post('/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-// -------------------------
-// Prompts generieren
-// -------------------------
+// Dynamische Prompts generieren
 app.post('/generate-prompts', async (req, res) => {
   try {
+    const { category } = req.body;
     if (!uploadedPosts.length) return res.status(400).json({ error: 'No posts uploaded' });
+
+    const systemMessage = `Du bist ein professioneller Social Media Content Creator. Analysiere die Posts und generiere 3-5 virale Instagram-Reel-Prompts.`;
+
+    const userMessage = category 
+      ? `Kategorie: ${category}. Analysiere diese Posts und erstelle Prompts in dieser Kategorie:\n${JSON.stringify(uploadedPosts)}`
+      : `Analysiere diese Posts und erstelle 3-5 virale Prompts:\n${JSON.stringify(uploadedPosts)}`;
 
     const response = await client.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: 'Du bist ein professioneller Social Media Content Creator.' },
-        {
-          role: 'user',
-          content: `Analysiere diese Posts und generiere 3-5 virale Prompts für Instagram-Reels:\n${JSON.stringify(uploadedPosts)}`
-        }
+        { role: 'system', content: systemMessage },
+        { role: 'user', content: userMessage }
       ],
-      max_tokens: 400
+      max_tokens: 500
     });
 
     const prompts = response.choices.map(c => c.message.content);
@@ -85,9 +73,7 @@ app.post('/generate-prompts', async (req, res) => {
   }
 });
 
-// -------------------------
-// Videoideen / Skripte generieren
-// -------------------------
+// Videoideen generieren
 app.post('/generate-video-ideas', async (req, res) => {
   try {
     const { prompts } = req.body;
@@ -96,20 +82,15 @@ app.post('/generate-video-ideas', async (req, res) => {
     }
 
     const videoIdeas = [];
-
     for (let prompt of prompts) {
       const response = await client.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: 'Du bist ein professioneller Social Media Video Creator.' },
-          {
-            role: 'user',
-            content: `Erstelle aus folgendem Prompt ein Instagram-Reel-Skript mit Handlung, Voiceover, Text und Hashtags: "${prompt}"`
-          }
+          { role: 'user', content: `Erstelle aus folgendem Prompt ein Instagram-Reel-Skript mit Handlung, Voiceover, Text und Hashtags: "${prompt}"` }
         ],
         max_tokens: 500
       });
-
       videoIdeas.push({ prompt, idea: response.choices[0].message.content });
     }
 
@@ -120,31 +101,5 @@ app.post('/generate-video-ideas', async (req, res) => {
   }
 });
 
-// -------------------------
-// Manuelle Generierung mit eigenem Prompt
-// -------------------------
-app.post('/generate', async (req, res) => {
-  try {
-    const { prompt } = req.body;
-    if (!prompt) return res.status(400).json({ error: 'Prompt missing' });
-    if (!uploadedPosts.length) return res.status(400).json({ error: 'No posts uploaded' });
-
-    const response = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'user', content: `${prompt}\n\n${JSON.stringify(uploadedPosts)}` }
-      ]
-    });
-
-    res.json({ result: response.choices[0].message.content });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Generation failed' });
-  }
-});
-
-// -------------------------
-// Server starten
-// -------------------------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
