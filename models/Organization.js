@@ -12,7 +12,6 @@ const organizationSchema = new mongoose.Schema({
   },
   slug: {
     type: String,
-    unique: true,
     lowercase: true,
     trim: true
   },
@@ -88,8 +87,8 @@ const organizationSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Indexes
+organizationSchema.index({ slug: 1 }, { unique: true });
 organizationSchema.index({ owner: 1 });
-organizationSchema.index({ slug: 1 });
 organizationSchema.index({ "members.user": 1 });
 
 // Pre-save: Generate slug

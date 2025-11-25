@@ -6,16 +6,13 @@ import { logger } from "../utils/logger.js";
 // Cache Schema (MongoDB-basiert)
 // ==============================
 const cacheSchema = new mongoose.Schema({
-  key: { type: String, required: true, unique: true, index: true },
+  key: { type: String, required: true, unique: true },
   value: { type: mongoose.Schema.Types.Mixed, required: true },
-  type: { type: String, enum: ["prompt", "video_idea", "hook", "caption", "trend", "virality"], required: true },
+  type: { type: String, enum: ["prompt", "video_idea", "hook", "caption", "trend", "virality", "batch"], required: true },
   hits: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now },
-  expiresAt: { type: Date, required: true, index: true }
+  expiresAt: { type: Date, required: true, expires: 0 }
 });
-
-// TTL Index für automatisches Löschen
-cacheSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 const Cache = mongoose.model("Cache", cacheSchema);
 

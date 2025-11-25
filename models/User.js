@@ -24,7 +24,6 @@ const userSchema = new mongoose.Schema({
   email: { 
     type: String, 
     required: true, 
-    unique: true,
     lowercase: true,
     trim: true
   },
@@ -167,9 +166,9 @@ const userSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // ==============================
-// Indexes
+// Indexes (email bereits durch unique: true indexiert)
 // ==============================
-userSchema.index({ email: 1 });
+userSchema.index({ email: 1 }, { unique: true });
 userSchema.index({ premiumTier: 1 });
 userSchema.index({ organization: 1 });
 userSchema.index({ "usage.lastActiveAt": -1 });

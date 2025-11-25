@@ -7,8 +7,7 @@ const calendarEntrySchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
-    required: true,
-    index: true
+    required: true
   },
   organization: {
     type: mongoose.Schema.Types.ObjectId,
@@ -42,8 +41,7 @@ const calendarEntrySchema = new mongoose.Schema({
   // Scheduling
   scheduledFor: {
     type: Date,
-    required: true,
-    index: true
+    required: true
   },
   scheduledTime: {
     type: String, // "14:30"
