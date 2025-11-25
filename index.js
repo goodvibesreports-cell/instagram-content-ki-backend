@@ -14,6 +14,10 @@ import { connectDB } from "./config/db.js";
 import authRoutes from "./routes/auth.js";
 import aiRoutes from "./routes/ai.js";
 import adminRoutes from "./routes/admin.js";
+import batchRoutes from "./routes/batch.js";
+import calendarRoutes from "./routes/calendar.js";
+import teamRoutes from "./routes/team.js";
+import settingsRoutes from "./routes/settings.js";
 
 // Models
 import Post from "./models/Post.js";
@@ -119,6 +123,10 @@ setInterval(cleanupUploads, 30 * 60 * 1000);
 app.use("/auth", authLimiter, authRoutes);
 app.use("/ai", aiRoutes);
 app.use("/admin", adminRoutes);
+app.use("/batch", batchRoutes);
+app.use("/calendar", calendarRoutes);
+app.use("/team", teamRoutes);
+app.use("/settings", settingsRoutes);
 
 // ==============================
 // Healthcheck
