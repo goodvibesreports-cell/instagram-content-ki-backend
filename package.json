@@ -1,19 +1,23 @@
 {
   "name": "instagram-content-ki-backend",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "node --watch index.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
+    "crypto-js": "^4.2.0",
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
     "fs-extra": "^11.3.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^9.0.0",
     "multer": "^1.4.5-lts.1",
-    "openai": "^4.104.0"
+    "openai": "^4.104.0",
+    "zod": "^3.24.0"
   }
 }

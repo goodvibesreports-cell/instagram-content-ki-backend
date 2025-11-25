@@ -1,16 +1,46 @@
 import jwt from "jsonwebtoken";
+import { createErrorResponse } from "../utils/errorHandler.js";
 
 export default function auth(req, res, next) {
-  const header = req.header("Authorization");
-  const token = header?.replace("Bearer ", "");
-
-  if (!token) return res.status(401).json({ error: "Missing token" });
-
   try {
+    const header = req.header("Authorization");
+    
+    if (!header) {
+      return res.status(401).json(createErrorResponse("AUTH_TOKEN_MISSING"));
+    }
+
+    const token = header.replace("Bearer ", "");
+    
+    if (!token) {
+      return res.status(401).json(createErrorResponse("AUTH_TOKEN_MISSING"));
+    }
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
     next();
+    
+  } catch (err) {
+    if (err.name === "TokenExpiredError") {
+      return res.status(401).json(createErrorResponse("AUTH_TOKEN_EXPIRED"));
+    }
+    return res.status(401).json(createErrorResponse("AUTH_TOKEN_INVALID"));
+  }
+}
+
+// Optional: Middleware die nicht blockiert (für optionale Auth)
+export function optionalAuth(req, res, next) {
+  try {
+    const header = req.header("Authorization");
+    
+    if (header) {
+      const token = header.replace("Bearer ", "");
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      req.user = decoded;
+    }
+    
+    next();
   } catch {
-    return res.status(401).json({ error: "Invalid token" });
+    // Token ungültig, aber trotzdem weitermachen
+    next();
   }
 }
