@@ -1,3 +1,4 @@
+﻿import authRoutes from "./routes/auth.js";
 // backend/index.js
 import express from "express";
 import multer from "multer";
@@ -17,7 +18,7 @@ app.use(express.json());
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const upload = multer({ dest: "uploads/" });
 
-// Speicher für hochgeladene Posts
+// Speicher fÃ¼r hochgeladene Posts
 let uploadedPosts = [];
 
 // ==============================
@@ -142,7 +143,7 @@ Erstelle:
           },
           {
             role: "user",
-            content: `Skript erstellen für: "${prompt}"`,
+            content: `Skript erstellen fÃ¼r: "${prompt}"`,
           },
         ],
         max_tokens: 600,
@@ -162,5 +163,8 @@ Erstelle:
 // ==============================
 // Server starten
 // ==============================
+app.use("/auth", authRoutes);
+
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Backend läuft auf Port ${PORT}`));
+app.listen(PORT, () => console.log(`ðŸš€ Backend lÃ¤uft auf Port ${PORT}`));
+
