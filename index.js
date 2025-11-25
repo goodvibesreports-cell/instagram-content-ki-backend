@@ -12,7 +12,23 @@ dotenv.config();
 connectDB(); // <-- MongoDB Verbindung starten
 
 const app = express();
-app.use(cors());
+
+// CORS konfigurieren - erlaubt Anfragen vom Frontend
+const corsOptions = {
+  origin: [
+    "https://instagram-content-ki-frontend.onrender.com",
+    "http://localhost:5173",
+    "http://localhost:3000"
+  ],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+};
+app.use(cors(corsOptions));
+
+// Preflight requests für alle Routes
+app.options("*", cors(corsOptions));
+
 app.use(express.json());
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
