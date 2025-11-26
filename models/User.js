@@ -19,11 +19,26 @@ const userSchema = new mongoose.Schema({
   credits: { type: Number, default: 20 },
   bonusCredits: { type: Number, default: 0 },
   platformMode: { type: String, enum: PLATFORM_MODES, default: "instagram" },
+  language: { type: String, default: "de" },
+  outputLanguages: { type: [String], default: ["de"] },
 
   creatorProfile: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "CreatorProfile",
     default: null
+  },
+
+  contentStyle: {
+    toneOfVoice: { type: String, default: "locker" },
+    writingStyle: { type: String, default: "prägnant" },
+    targetAudience: { type: String, default: "" },
+    niche: { type: String, default: "" },
+    brandKeywords: { type: [String], default: [] },
+    avoidWords: { type: [String], default: [] },
+    emojiUsage: { type: String, default: "moderate" },
+    hashtagStyle: { type: String, default: "balanced" },
+    sampleContent: { type: [String], default: [] },
+    customInstructions: { type: String, default: "" }
   },
 
   usage: {
@@ -38,7 +53,12 @@ const userSchema = new mongoose.Schema({
   settings: {
     timezone: { type: String, default: "Europe/Berlin" },
     language: { type: String, default: "de" },
-    notifications: { type: Boolean, default: true }
+    notifications: { type: Boolean, default: true },
+    darkMode: { type: Boolean, default: false },
+    emailNotifications: { type: Boolean, default: true },
+    autoSaveHistory: { type: Boolean, default: true },
+    defaultLanguage: { type: String, default: "de" },
+    defaultTone: { type: String, default: "casual" }
   }
 }, { timestamps: true });
 
@@ -68,6 +88,32 @@ userSchema.methods.trackUsage = async function(type, tokens = 0) {
   this.usage.tokens += tokens;
   this.usage.lastActiveAt = new Date();
   await this.save();
+};
+
+userSchema.methods.getStylePrompt = function() {
+  const style = this.contentStyle || {};
+
+  const sections = [];
+  if (style.niche) sections.push(`Nische: ${style.niche}`);
+  if (style.targetAudience) sections.push(`Zielgruppe: ${style.targetAudience}`);
+  if (style.toneOfVoice) sections.push(`Tonfall: ${style.toneOfVoice}`);
+  if (style.writingStyle) sections.push(`Schreibstil: ${style.writingStyle}`);
+  if (style.emojiUsage) sections.push(`Emoji-Nutzung: ${style.emojiUsage}`);
+  if (style.hashtagStyle) sections.push(`Hashtag-Stil: ${style.hashtagStyle}`);
+  if (style.brandKeywords?.length) sections.push(`Marken-Keywords: ${style.brandKeywords.join(", ")}`);
+  if (style.avoidWords?.length) sections.push(`Verbotene Wörter: ${style.avoidWords.join(", ")}`);
+  if (style.customInstructions) sections.push(`Spezielle Anweisungen: ${style.customInstructions}`);
+  if (style.sampleContent?.length) {
+    sections.push(
+      `Beispiel-Content:\n${style.sampleContent.slice(0, 3).map((sample, idx) => `(${idx + 1}) ${sample}`).join("\n")}`
+    );
+  }
+
+  if (!sections.length) {
+    return "Standard-Stil: Modern, direkt, klare Hook + Nutzenargument, Emojis moderat einsetzen.";
+  }
+
+  return `Creator-Stil:\n${sections.join("\n")}`;
 };
 
 userSchema.methods.requireVerification = function() {
