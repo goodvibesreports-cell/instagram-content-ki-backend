@@ -1,6 +1,5 @@
 ﻿// backend/index.js - Instagram Content KI v2.0
 import express from "express";
-import multer from "multer";
 import cors from "cors";
 import fs from "fs-extra";
 import path from "path";
@@ -19,6 +18,7 @@ import batchRoutes from "./routes/batch.js";
 import calendarRoutes from "./routes/calendar.js";
 import teamRoutes from "./routes/team.js";
 import settingsRoutes from "./routes/settings.js";
+import uploadRoutes from "./routes/upload.js";
 
 // Models
 import Post from "./models/Post.js";
@@ -71,33 +71,10 @@ app.use(generalLimiter);
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // ==============================
-// Multer Upload Config
+// Upload Directory & Cleanup
 // ==============================
 const uploadDir = path.join(process.cwd(), "uploads");
 fs.ensureDirSync(uploadDir);
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${path.extname(file.originalname)}`;
-    cb(null, uniqueName);
-  }
-});
-
-const fileFilter = (req, file, cb) => {
-  const allowedTypes = ["application/json", "text/plain"];
-  if (allowedTypes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error("Nur JSON-Dateien erlaubt"), false);
-  }
-};
-
-const upload = multer({
-  storage,
-  fileFilter,
-  limits: { fileSize: 10 * 1024 * 1024 }
-});
 
 // Cleanup
 async function cleanupUploads() {
@@ -129,6 +106,7 @@ app.use("/batch", batchRoutes);
 app.use("/calendar", calendarRoutes);
 app.use("/team", teamRoutes);
 app.use("/settings", settingsRoutes);
+app.use("/upload", uploadLimiter, uploadRoutes);
 
 // ==============================
 // Healthcheck
@@ -188,137 +166,6 @@ app.put("/profile/settings", auth, async (req, res) => {
     return res.json(createSuccessResponse({ settings: user.settings }, "Einstellungen gespeichert"));
   } catch (err) {
     return res.status(500).json(createErrorResponse("INTERNAL_ERROR", err.message));
-  }
-});
-
-// ==============================
-// POST Upload
-// ==============================
-app.post("/upload", upload.single("file"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
-
-    const raw = await fs.readFile(req.file.path, "utf-8");
-
-    let json;
-    try {
-      json = JSON.parse(raw);
-    } catch (err) {
-      await fs.unlink(req.file.path);
-      return res.status(400).json({ error: "Invalid JSON" });
-    }
-
-    let posts = [];
-
-    // ----------------------------------------
-    // CASE 1: Already correct format (array)
-    // ----------------------------------------
-    if (Array.isArray(json)) {
-      posts = json.map(p => ({
-        caption: p.caption || p.text || "",
-        likes: Number(p.likes || p.like_count || 0),
-        views: Number(p.views || p.play_count || 0),
-        comments: Number(p.comments || p.comment_count || 0)
-      }));
-    }
-
-    // ----------------------------------------
-    // CASE 2: TikTok Video Export
-    // ----------------------------------------
-    else if (json?.Videos?.["Video List"]) {
-      posts = json.Videos["Video List"].map(v => ({
-        caption: v.Caption || v["Video Caption"] || "",
-        likes: Number(v.Likes || v["Like Count"] || 0),
-        views: Number(v.Views || v["Play Count"] || 0),
-        comments: Number(v.Comments || v["Comment Count"] || 0)
-      }));
-    }
-
-    // ----------------------------------------
-    // CASE 3: Instagram Export
-    // ----------------------------------------
-    else if (json?.ig_posts || json?.posts) {
-      const arr = json.ig_posts || json.posts;
-
-      posts = arr.map(i => ({
-        caption: i.caption || i.title || i.text || "",
-        likes: Number(i.likes || i.like_count || 0),
-        views: Number(i.views || i.play_count || 0),
-        comments: Number(i.comments || i.comment_count || 0)
-      }));
-    }
-
-    // ----------------------------------------
-    // CASE 4: Deep automatic search (Universal Fallback)
-    // ----------------------------------------
-    else {
-      // Extract potential posts from ANY nested structure
-      const stack = [json];
-
-      while (stack.length) {
-        const obj = stack.pop();
-
-        if (Array.isArray(obj)) {
-          obj.forEach(o => {
-            if (typeof o === "object") stack.push(o);
-          });
-          continue;
-        }
-
-        if (typeof obj === "object") {
-          // Detect a post-like structure
-          const maybeCaption =
-            obj.caption || obj.text || obj.title || obj.description;
-
-          if (maybeCaption) {
-            posts.push({
-              caption: maybeCaption || "",
-              likes: Number(
-                obj.likes || obj.like_count || obj.stats?.likes || 0
-              ),
-              views: Number(
-                obj.views || obj.play_count || obj.stats?.views || 0
-              ),
-              comments: Number(
-                obj.comments ||
-                  obj.comment_count ||
-                  obj.stats?.comments ||
-                  0
-              )
-            });
-          }
-
-          Object.values(obj).forEach(v => {
-            if (typeof v === "object") stack.push(v);
-          });
-        }
-      }
-    }
-
-    await fs.unlink(req.file.path);
-
-    if (!posts.length) {
-      return res.status(400).json({
-        error:
-          "Unable to detect posts. Unsupported JSON structure. Upload TikTok/Instagram exports."
-      });
-    }
-
-    const uploadedPosts = posts;
-
-    return res.json({
-      message: `Upload erfolgreich: ${uploadedPosts.length} Posts`,
-      posts: uploadedPosts
-    });
-
-  } catch (err) {
-    console.error(err);
-    if (req.file?.path) {
-      await fs.unlink(req.file.path).catch(() => {});
-    }
-    res.status(500).json({ error: "Upload failed" });
   }
 });
 
