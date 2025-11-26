@@ -6,7 +6,8 @@ import {
   loginSchema,
   verifySchema,
   platformModeSchema,
-  changePasswordSchema
+  changePasswordSchema,
+  testAccountSchema
 } from "../validators/schemas.js";
 import {
   register,
@@ -14,12 +15,14 @@ import {
   verify,
   me,
   setPlatformMode,
-  changePassword
+  changePassword,
+  registerTestAccount
 } from "../controllers/authController.js";
 
 const router = express.Router();
 
 router.post("/register", validate(registerSchema), register);
+router.post("/test-account", validate(testAccountSchema), registerTestAccount);
 router.post("/verify", validate(verifySchema), verify);
 router.post("/login", validate(loginSchema), login);
 router.get("/me", auth, me);

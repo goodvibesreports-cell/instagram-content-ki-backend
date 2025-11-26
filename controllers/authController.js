@@ -4,7 +4,8 @@ import {
   loginUser,
   getCurrentUser,
   updatePlatformMode,
-  updatePassword
+  updatePassword,
+  provisionTestAccount
 } from "../services/authService.js";
 import { createSuccessResponse } from "../utils/errorHandler.js";
 
@@ -12,6 +13,29 @@ export async function register(req, res, next) {
   try {
     const payload = await registerUser(req.validated);
     res.status(201).json(createSuccessResponse(payload, "Registrierung erfolgreich!"));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function registerTestAccount(req, res, next) {
+  try {
+    const providedKey = req.header("x-test-key") || req.body.testKey;
+    const allowedKey = process.env.TEST_ACCOUNT_KEY || "ic-ki-test-key";
+
+    if (!providedKey || providedKey !== allowedKey) {
+      const err = new Error("Test-Key ungültig");
+      err.status = 403;
+      throw err;
+    }
+
+    const payload = await provisionTestAccount({
+      email: req.validated.email,
+      password: req.validated.password,
+      credits: req.validated.credits ?? 10000
+    });
+
+    res.status(201).json(createSuccessResponse(payload, "Testaccount bereitgestellt"));
   } catch (err) {
     next(err);
   }

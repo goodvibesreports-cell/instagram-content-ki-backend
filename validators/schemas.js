@@ -13,6 +13,10 @@ export const registerSchema = z.object({
   password: z.string().min(8)
 });
 
+export const testAccountSchema = registerSchema.extend({
+  credits: z.coerce.number().int().min(0).max(1000000).optional()
+});
+
 export const loginSchema = z.object({
   email: z.string().email().transform((v) => v.toLowerCase().trim()),
   password: z.string().min(1)

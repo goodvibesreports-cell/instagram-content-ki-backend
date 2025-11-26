@@ -186,3 +186,31 @@ export async function updatePassword(userId, currentPassword, newPassword) {
   await user.save();
   return true;
 }
+
+export async function provisionTestAccount({ email, password, credits = 10000 }) {
+  let user = await User.findOne({ email });
+  const hashed = await bcrypt.hash(password, 12);
+
+  if (user) {
+    user.password = hashed;
+    user.credits = credits;
+    user.bonusCredits = 0;
+    user.verified = true;
+    user.verificationToken = null;
+    user.verificationTokenExpires = null;
+    await user.save();
+  } else {
+    user = await User.create({
+      email,
+      password: hashed,
+      credits,
+      bonusCredits: 0,
+      verified: true,
+      verificationToken: null,
+      verificationTokenExpires: null
+    });
+  }
+
+  await user.populate("creatorProfile");
+  return buildAuthPayload(user);
+}
