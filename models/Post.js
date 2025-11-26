@@ -52,3 +52,4 @@ postSchema.index({ category: 1 });
 
 export default mongoose.model("Post", postSchema);
 
+

@@ -3,7 +3,6 @@ import auth from "../middleware/auth.js";
 import { createSuccessResponse, createErrorResponse } from "../utils/errorHandler.js";
 import { logger } from "../utils/logger.js";
 import User from "../models/User.js";
-import OpenAI from "openai";
 
 const router = express.Router();
 
@@ -13,7 +12,7 @@ const router = express.Router();
 router.get("/profile", auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
-      .select("-password -apiKeys.openai -apiKeys.anthropic -apiKeys.runway -apiKeys.elevenLabs")
+      .select("-password")
       .populate("organization", "name slug plan maxMembers");
     
     if (!user) {
@@ -24,8 +23,7 @@ router.get("/profile", auth, async (req, res) => {
       user: {
         ...user.toObject(),
         totalCredits: user.totalCredits,
-        isPremium: user.isPremium,
-        hasOwnApiKey: user.hasOwnApiKey
+        isPremium: user.isPremium
       }
     }));
   } catch (err) {
@@ -95,119 +93,6 @@ router.put("/language", auth, async (req, res) => {
       language: user.language,
       outputLanguages: user.outputLanguages
     }, "Sprach-Einstellungen gespeichert"));
-    
-  } catch (err) {
-    return res.status(500).json(createErrorResponse("INTERNAL_ERROR", err.message));
-  }
-});
-
-// ==============================
-// Set API Key
-// ==============================
-router.post("/api-keys", auth, async (req, res) => {
-  try {
-    const { provider, apiKey } = req.body;
-    
-    if (!provider || !apiKey) {
-      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "Provider und API Key erforderlich"));
-    }
-    
-    const validProviders = ["openai", "anthropic", "runway", "elevenLabs"];
-    if (!validProviders.includes(provider)) {
-      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", `Ungültiger Provider. Erlaubt: ${validProviders.join(", ")}`));
-    }
-    
-    // Validate OpenAI API Key
-    if (provider === "openai") {
-      try {
-        const testClient = new OpenAI({ apiKey });
-        await testClient.models.list();
-      } catch (err) {
-        return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "Ungültiger OpenAI API Key"));
-      }
-    }
-    
-    const user = await User.findById(req.user.id);
-    await user.setApiKey(provider, apiKey);
-    
-    logger.info(`User ${user.email} set ${provider} API key`);
-    
-    return res.json(createSuccessResponse({
-      provider,
-      hasKey: true
-    }, `${provider} API Key gespeichert`));
-    
-  } catch (err) {
-    logger.error("Set API key error", { error: err.message });
-    return res.status(500).json(createErrorResponse("INTERNAL_ERROR", err.message));
-  }
-});
-
-// ==============================
-// Get API Key Status
-// ==============================
-router.get("/api-keys", auth, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    
-    return res.json(createSuccessResponse({
-      keys: {
-        openai: !!user.apiKeys.openai,
-        anthropic: !!user.apiKeys.anthropic,
-        runway: !!user.apiKeys.runway,
-        elevenLabs: !!user.apiKeys.elevenLabs
-      },
-      useOwnApiKeys: user.useOwnApiKeys
-    }));
-    
-  } catch (err) {
-    return res.status(500).json(createErrorResponse("INTERNAL_ERROR", err.message));
-  }
-});
-
-// ==============================
-// Remove API Key
-// ==============================
-router.delete("/api-keys/:provider", auth, async (req, res) => {
-  try {
-    const { provider } = req.params;
-    
-    const user = await User.findById(req.user.id);
-    await user.removeApiKey(provider);
-    
-    logger.info(`User ${user.email} removed ${provider} API key`);
-    
-    return res.json(createSuccessResponse(null, `${provider} API Key entfernt`));
-    
-  } catch (err) {
-    return res.status(500).json(createErrorResponse("INTERNAL_ERROR", err.message));
-  }
-});
-
-// ==============================
-// Toggle Use Own API Keys
-// ==============================
-router.put("/api-keys/toggle", auth, async (req, res) => {
-  try {
-    const { useOwnApiKeys } = req.body;
-    
-    const user = await User.findById(req.user.id);
-    
-    // Can only enable if user has an OpenAI key
-    if (useOwnApiKeys && !user.apiKeys.openai) {
-      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "Du musst zuerst einen OpenAI API Key hinterlegen"));
-    }
-    
-    user.useOwnApiKeys = useOwnApiKeys;
-    await user.save();
-    
-    const message = useOwnApiKeys 
-      ? "Du verwendest jetzt deinen eigenen API Key (keine Credits werden verbraucht)"
-      : "Du verwendest jetzt die Platform-Credits";
-    
-    return res.json(createSuccessResponse({
-      useOwnApiKeys: user.useOwnApiKeys
-    }, message));
     
   } catch (err) {
     return res.status(500).json(createErrorResponse("INTERNAL_ERROR", err.message));

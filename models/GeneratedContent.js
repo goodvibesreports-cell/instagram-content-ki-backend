@@ -48,3 +48,4 @@ generatedContentSchema.index({ category: 1, type: 1 });
 
 export default mongoose.model("GeneratedContent", generatedContentSchema);
 
+

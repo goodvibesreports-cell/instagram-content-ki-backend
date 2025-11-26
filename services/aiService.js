@@ -1,329 +1,246 @@
 import OpenAI from "openai";
 import { cacheService } from "./cacheService.js";
 import { logger } from "../utils/logger.js";
+import { buildCreatorPrompt } from "./creatorService.js";
+import { PLATFORM_TEMPLATES } from "../utils/platformTemplates.js";
+import { scorePerformance } from "../utils/scoring.js";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// ==============================
-// Credit Costs per Feature
-// ==============================
-export const CREDIT_COSTS = {
+export const CREDIT_COSTS = Object.freeze({
   prompt: 1,
   video_idea: 2,
   hook: 1,
   caption: 1,
   title: 1,
   trend: 3,
-  virality: 2
-};
+  virality: 2,
+  batch: 5
+});
 
-// ==============================
-// Base AI Call with Caching
-// ==============================
-async function callAI(systemPrompt, userPrompt, options = {}) {
-  const {
-    type = "general",
-    maxTokens = 1000,
-    temperature = 0.7,
-    useCache = true,
-    cacheTTL = 24 * 60 * 60 * 1000
-  } = options;
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
-  const cacheKey = { system: systemPrompt.substring(0, 100), user: userPrompt };
-  
-  // Check Cache
-  if (useCache) {
-    const cached = await cacheService.get(type, cacheKey);
-    if (cached) {
-      return { ...cached, fromCache: true };
-    }
-  }
-
-  const startTime = Date.now();
-  
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      max_tokens: maxTokens,
-      temperature
-    });
-
-    const content = response.choices[0]?.message?.content;
-    const duration = Date.now() - startTime;
-    
-    const result = {
-      content,
-      tokens: response.usage?.total_tokens,
-      duration,
-      model: "gpt-4o-mini",
+async function callOpenAI(messages, { type = "general", maxTokens = 1200, temperature = 0.7, cacheKey = null } = {}) {
+  if (!openai) {
+    return {
+      content: "⚠️ OPENAI_API_KEY fehlt – Demo Output.",
+      tokens: 0,
+      model: "mock",
       fromCache: false
     };
-
-    // Save to Cache
-    if (useCache && content) {
-      await cacheService.set(type, cacheKey, result, cacheTTL);
-    }
-
-    logger.ai(`${type} generated`, { tokens: result.tokens, duration });
-    
-    return result;
-  } catch (err) {
-    logger.error(`AI ${type} error`, { error: err.message });
-    throw err;
   }
-}
 
-// ==============================
-// Hook Generator
-// ==============================
-export async function generateHooks(topic, count = 10, style = "mixed") {
-  const systemPrompt = `Du bist ein Experte für virale Social Media Hooks.
-Ein Hook ist der erste Satz/die ersten 3 Sekunden eines Videos, der die Aufmerksamkeit fesselt.
+  if (cacheKey) {
+    const cached = await cacheService.get(type, cacheKey);
+    if (cached) return { ...cached, fromCache: true };
+  }
 
-HOOK-STILE:
-- question: Fragen, die Neugier wecken
-- statement: Mutige, kontroverse Aussagen
-- shocking: Überraschende Fakten
-- story: "Ich habe..." / "Als ich..."
-- mixed: Mischung aus allen
-
-REGELN:
-1. Jeder Hook MUSS in den ersten 3 Sekunden fesseln
-2. Keine generischen Hooks
-3. Spezifisch und unique
-4. Direkte Ansprache (Du/Ihr)
-5. Emotional triggernd
-
-FORMAT:
-Nummeriere jeden Hook und füge einen Emoji + Wirkungskategorie hinzu.
-Beispiel:
-1. 🔥 [NEUGIER] "Warum 90% der Menschen diesen Fehler machen..."`;
-
-  const userPrompt = `Thema: "${topic}"
-Stil: ${style}
-Anzahl: ${count}
-
-Generiere ${count} einzigartige, scroll-stoppende Hooks für dieses Thema.`;
-
-  const result = await callAI(systemPrompt, userPrompt, {
-    type: "hook",
-    maxTokens: 1500,
-    temperature: 0.8
+  const start = Date.now();
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages,
+    max_tokens: maxTokens,
+    temperature
   });
 
+  const result = {
+    content: response.choices[0]?.message?.content,
+    tokens: response.usage?.total_tokens,
+    duration: Date.now() - start,
+    model: "gpt-4o-mini",
+    fromCache: false
+  };
+
+  if (cacheKey && result.content) {
+    await cacheService.set(type, cacheKey, result);
+  }
+  logger.ai(`${type} generated`, { tokens: result.tokens, duration: result.duration });
   return result;
 }
 
+export async function generatePromptIdeas(user, profile, { topic, platform, count = 5 }) {
+  const platformHint = PLATFORM_TEMPLATES[platform] || PLATFORM_TEMPLATES.instagram;
+  const dna = buildCreatorPrompt(user, profile);
+
+  const system = `Du bist eine Shortform-Strategin für ${platformHint.label}.
+Nutze den Stil des Creators und liefere Serien-Ideen, keine generischen Vorschläge.`;
+  const userPrompt = `Creator DNA:
+${dna}
+
+PLATFORM MODE HINWEISE:
+${platformHint.prompt}
+
+THEMA: ${topic}
+ANZAHL IDEEN: ${count}
+
+FORMAT:
+1. Serienname
+2. Episodenidee (Hook + Kernaussage)
+3. CTA
+4. Warum passt es zur Creator DNA`;
+
+  return callOpenAI([
+    { role: "system", content: system },
+    { role: "user", content: userPrompt }
+  ], { type: "prompt", cacheKey: { topic, platform, dna } });
+}
+
+export async function generateVideoScript(user, profile, { prompt, platform }) {
+  const platformHint = PLATFORM_TEMPLATES[platform] || PLATFORM_TEMPLATES.instagram;
+  const dna = buildCreatorPrompt(user, profile);
+
+  const system = `Du schreibst präzise Reels/TikTok Scripts im ${platformHint.label}-Format.
+Berücksichtige Hook, Szenen, Voiceover, Text-Overlays und CTA.`;
+
+  const content = await callOpenAI([
+    { role: "system", content: system },
+    { role: "user", content: `Creator DNA:\n${dna}\n\nPLATFORM MODE:\n${platformHint.prompt}\n\nPrompt:\n${prompt}` }
+  ], { type: "script", maxTokens: 1800 });
+
+  return content;
+}
+
+export async function analyzeUpload(user, profile, payload) {
+  const platformHint = PLATFORM_TEMPLATES[payload.platform] || PLATFORM_TEMPLATES.instagram;
+  const dna = buildCreatorPrompt(user, profile);
+
+  const system = `Du bist ein Upload-Analyser für Shortform Videos.
+Bewerte Hook, Story, CTA, Hashtags und gib konkrete Scores (0-100).`;
+
+  const response = await callOpenAI([
+    { role: "system", content: system },
+    { role: "user", content: `Creator DNA:\n${dna}\n\nPLATFORM:\n${platformHint.prompt}\n\nCONTENT:\n${payload.caption}\n\nMETRICS: ${JSON.stringify(payload.metrics || {})}` }
+  ], { type: "analysis", maxTokens: 1600, temperature: 0.4 });
+
+  return response;
+}
+
+export async function generateSeriesBlueprint(user, profile, { topic, episodes = 10, platform }) {
+  const platformHint = PLATFORM_TEMPLATES[platform] || PLATFORM_TEMPLATES.instagram;
+  const dna = buildCreatorPrompt(user, profile);
+
+  const system = `Du bist die Series Factory.
+Erstelle Serien-Formate mit Episodenübersicht für ${platformHint.label}.`;
+
+  return callOpenAI([
+    { role: "system", content: system },
+    { role: "user", content: `Creator DNA:\n${dna}\n\nPLATFORM HINWEIS:\n${platformHint.prompt}\n\nSerie Topic: ${topic}\nAnzahl Episoden: ${episodes}` }
+  ], { type: "series", maxTokens: 2200 });
+}
+
+export function calculateMomentum(performance) {
+  return scorePerformance(performance);
+}
+
 // ==============================
-// Caption Generator
+// Advanced Generators (Hooks, Captions, Titles)
 // ==============================
-export async function generateCaptions(topic, options = {}) {
-  const { tone = "casual", includeEmojis = true, includeHashtags = true, count = 3 } = options;
 
-  const systemPrompt = `Du bist ein Instagram Caption Spezialist.
-Deine Captions sind optimiert für:
-- Engagement (Likes, Kommentare, Saves)
-- Algorithmus-Freundlichkeit
-- Call-to-Action
+export async function generateHooks(topic, count = 10, style = "mixed") {
+  const system = "Du bist ein Hook-Copywriter für kurze Video-Formate. Schreibe radikale, scroll-stoppende Hooks.";
+  const userPrompt = `THEMA: ${topic}
+ANZAHL: ${count}
+STIL: ${style}
 
-STRUKTUR einer perfekten Caption:
-1. Hook (erste Zeile - erscheint in Preview)
-2. Wert/Story (2-3 Absätze)
-3. Call-to-Action
-4. Hashtags (wenn gewünscht)
+FORMAT:
+1. [Hook Text]
+2. [Hook Text]
+...`;
 
-EMOJI-NUTZUNG: ${includeEmojis ? "Ja, strategisch einsetzen" : "Nein, keine Emojis"}
-HASHTAGS: ${includeHashtags ? "10-15 relevante Hashtags" : "Keine Hashtags"}
-TON: ${tone}
+  return callOpenAI(
+    [
+      { role: "system", content: system },
+      { role: "user", content: userPrompt }
+    ],
+    { type: "hook", maxTokens: 800, cacheKey: { topic, count, style } }
+  );
+}
+
+export async function generateCaptions(topic, { tone = "casual", includeEmojis = true, includeHashtags = true, count = 3 } = {}) {
+  const system = "Du bist ein Instagram Caption Writer. Jede Caption enthält Hook, Story und CTA.";
+  const userPrompt = `THEMA: ${topic}
+TONALITÄT: ${tone}
+EMOJIS: ${includeEmojis ? "Ja" : "Nein"}
+HASHTAGS: ${includeHashtags ? "Ja" : "Nein"}
+ANZAHL: ${count}
 
 FORMAT:
 ---
-CAPTION #[Nummer]
-[Die Caption hier]
-
-🎯 Zweck: [Was soll erreicht werden]
-💡 CTA-Typ: [Frage/Aufforderung/Share]
+Caption #[Nummer]
+Text: ...
+CTA: ...
+Hashtags: ...
 ---`;
 
-  const userPrompt = `Thema: "${topic}"
-Ton: ${tone}
-Anzahl: ${count}
-
-Erstelle ${count} verschiedene Instagram Captions.`;
-
-  const result = await callAI(systemPrompt, userPrompt, {
-    type: "caption",
-    maxTokens: 2000,
-    temperature: 0.7
-  });
-
-  return result;
+  return callOpenAI(
+    [
+      { role: "system", content: system },
+      { role: "user", content: userPrompt }
+    ],
+    { type: "caption", maxTokens: 1200, cacheKey: { topic, tone, includeEmojis, includeHashtags, count } }
+  );
 }
 
-// ==============================
-// Reel Title Generator
-// ==============================
 export async function generateTitles(topic, style = "clickbait", count = 5) {
-  const systemPrompt = `Du bist ein Experte für virale Reel-Titel.
-
-TITEL-STILE:
-- clickbait: Neugier weckend, zum Klicken verleitend
-- informative: Klar und informativ
-- question: Als Frage formuliert
-- how-to: Anleitungs-Format
-- listicle: Listen-Format ("5 Wege...", "3 Gründe...")
-
-REGELN:
-1. Maximal 40 Zeichen für beste Darstellung
-2. Zahlen und Power-Wörter nutzen
-3. Emotional triggernd
-4. Spezifisch, nicht generisch
-
-POWER-WÖRTER: Geheimnis, Fehler, Warum, Jetzt, Sofort, Einfach, Nie wieder, Unglaublich
+  const system = "Du bist ein Title-Generator für Reels/TikTok. Schreibe ultra-kurze Titel mit maximal 55 Zeichen.";
+  const userPrompt = `THEMA: ${topic}
+STIL: ${style}
+ANZAHL: ${count}
 
 FORMAT:
-1. [TITEL] (Zeichen: X) - [Stärke: 1-10]`;
+1. Titel
+2. Titel`;
 
-  const userPrompt = `Thema: "${topic}"
-Stil: ${style}
-Anzahl: ${count}
-
-Generiere ${count} scroll-stoppende Reel-Titel.`;
-
-  const result = await callAI(systemPrompt, userPrompt, {
-    type: "title",
-    maxTokens: 800,
-    temperature: 0.8
-  });
-
-  return result;
+  return callOpenAI(
+    [
+      { role: "system", content: system },
+      { role: "user", content: userPrompt }
+    ],
+    { type: "title", maxTokens: 400, cacheKey: { topic, style, count } }
+  );
 }
 
 // ==============================
-// Trend Analysis
+// Analysen
 // ==============================
+
 export async function analyzeTrends(niche, platform = "instagram", timeframe = "week") {
-  const systemPrompt = `Du bist ein Social Media Trend-Analyst mit Expertise in ${platform}.
+  const system = "Du bist ein Trend-Analyst für Social Media. Liefere Insights anhand aktueller Best Practices.";
+  const userPrompt = `NISCHE: ${niche}
+PLATTFORM: ${platform}
+ZEITRAUM: ${timeframe}
 
-DEINE AUFGABE:
-Analysiere aktuelle Trends in der gegebenen Nische und liefere actionable Insights.
+FORMAT:
+- Trending Content Formate
+- Viral Hooks
+- Content Gaps
+- Handlungsempfehlungen`;
 
-OUTPUT-FORMAT:
-📈 TREND REPORT: ${niche.toUpperCase()}
-Plattform: ${platform} | Zeitraum: ${timeframe}
-━━━━━━━━━━━━━━━━━━━━━
-
-🔥 TOP 5 TRENDS:
-1. [Trend Name]
-   - Beschreibung: ...
-   - Virales Potenzial: [1-10]
-   - Content-Idee: ...
-   - Hashtags: #...
-
-💡 CONTENT EMPFEHLUNGEN:
-- [3-5 konkrete Content-Ideen]
-
-📊 TIMING:
-- Beste Postzeiten
-- Optimale Frequenz
-
-⚠️ TRENDS ZU VERMEIDEN:
-- [Was nicht mehr funktioniert]
-
-🎯 QUICK WINS:
-- [Einfach umsetzbare Ideen]`;
-
-  const userPrompt = `Nische: "${niche}"
-Plattform: ${platform}
-Zeitraum: ${timeframe}
-
-Analysiere die aktuellen Trends und gib konkrete Empfehlungen.`;
-
-  const result = await callAI(systemPrompt, userPrompt, {
-    type: "trend",
-    maxTokens: 2500,
-    temperature: 0.6,
-    cacheTTL: 6 * 60 * 60 * 1000 // 6 Stunden Cache für Trends
-  });
-
-  return result;
+  return callOpenAI(
+    [
+      { role: "system", content: system },
+      { role: "user", content: userPrompt }
+    ],
+    { type: "trend", maxTokens: 1500, cacheKey: { niche, platform, timeframe } }
+  );
 }
 
-// ==============================
-// Virality Analysis
-// ==============================
 export async function analyzeVirality(content, type = "full") {
-  const systemPrompt = `Du bist ein Virality-Analyst mit Deep-Knowledge über Social Media Algorithmen.
+  const system = "Du bist ein Virality-Analyst. Bewerte Content nach Story, Emotion, Hook und CTA.";
+  const userPrompt = `KONTENT-TYP: ${type}
+INHALT:
+${content}
 
-ANALYSE-KRITERIEN:
-1. Hook Strength (Wie gut fesselt der Anfang?)
-2. Emotional Trigger (Welche Emotionen werden ausgelöst?)
-3. Shareability (Würde man es teilen?)
-4. Watch Time Prediction (Bleibt man dran?)
-5. Engagement Potential (Kommentare, Likes)
-6. Algorithm Friendliness (Passt es zum Algo?)
+FORMAT:
+🎯 Score (0-10)
+✅ Was funktioniert
+⚠️ Risiken
+🚀 Verbesserungen
+💡 Neue Hook/CTA`;
 
-OUTPUT-FORMAT:
-🔬 VIRALITY ANALYSE
-━━━━━━━━━━━━━━━━━━━━━
-
-📊 GESAMT-SCORE: [X/100]
-
-📈 DETAIL-SCORES:
-- Hook Strength: [X/10] - [Begründung]
-- Emotional Impact: [X/10] - [Welche Emotion]
-- Shareability: [X/10] - [Warum/Warum nicht]
-- Watch Time: [X/10] - [Prognose]
-- Engagement: [X/10] - [Erwartung]
-- Algo Score: [X/10] - [Erklärung]
-
-💪 STÄRKEN:
-- [Liste der Stärken]
-
-⚠️ SCHWÄCHEN:
-- [Liste der Schwächen]
-
-🔧 VERBESSERUNGSVORSCHLÄGE:
-1. [Konkrete Änderung 1]
-2. [Konkrete Änderung 2]
-3. [Konkrete Änderung 3]
-
-🎯 OPTIMIERTER HOOK:
-[Verbesserte Version des Hooks]
-
-📱 PLATTFORM-EMPFEHLUNG:
-- Am besten für: [Plattform]
-- Postzeit: [Empfehlung]`;
-
-  const userPrompt = `CONTENT ZUR ANALYSE:
-"${content}"
-
-Analyse-Typ: ${type}
-
-Führe eine detaillierte Virality-Analyse durch.`;
-
-  const result = await callAI(systemPrompt, userPrompt, {
-    type: "virality",
-    maxTokens: 2000,
-    temperature: 0.5
-  });
-
-  return result;
+  return callOpenAI(
+    [
+      { role: "system", content: system },
+      { role: "user", content: userPrompt }
+    ],
+    { type: "virality", maxTokens: 1000, cacheKey: { content, type } }
+  );
 }
-
-// ==============================
-// Export all
-// ==============================
-export default {
-  generateHooks,
-  generateCaptions,
-  generateTitles,
-  analyzeTrends,
-  analyzeVirality,
-  CREDIT_COSTS
-};
-

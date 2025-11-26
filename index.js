@@ -13,6 +13,7 @@ import { connectDB } from "./config/db.js";
 // Routes
 import authRoutes from "./routes/auth.js";
 import aiRoutes from "./routes/ai.js";
+import creatorRoutes from "./routes/creator.js";
 import adminRoutes from "./routes/admin.js";
 import batchRoutes from "./routes/batch.js";
 import calendarRoutes from "./routes/calendar.js";
@@ -29,7 +30,7 @@ import auth, { optionalAuth } from "./middleware/auth.js";
 import { generalLimiter, authLimiter, aiLimiter, uploadLimiter, abuseDetection } from "./middleware/rateLimiter.js";
 
 // Validators
-import { validate, validateArray, generatePromptsSchema, generateVideoIdeasSchema, uploadPostsSchema } from "./validators/schemas.js";
+import { validate, generatePromptsSchema, generateVideoIdeasSchema, uploadPostsSchema } from "./validators/schemas.js";
 
 // Utils
 import { createErrorResponse, createSuccessResponse, errorMiddleware } from "./utils/errorHandler.js";
@@ -122,6 +123,7 @@ setInterval(cleanupUploads, 30 * 60 * 1000);
 // ==============================
 app.use("/auth", authLimiter, authRoutes);
 app.use("/ai", aiRoutes);
+app.use("/creator", creatorRoutes);
 app.use("/admin", adminRoutes);
 app.use("/batch", batchRoutes);
 app.use("/calendar", calendarRoutes);

@@ -45,9 +45,8 @@ router.post("/generate", auth, dynamicLimiter, async (req, res) => {
       return res.status(404).json(createErrorResponse("NOT_FOUND", "User nicht gefunden"));
     }
     
-    // Check credits (unless user has own API key)
-    const useOwnKey = user.useOwnApiKeys && user.apiKeys.openai;
-    if (!useOwnKey && user.totalCredits < BATCH_CREDIT_COST) {
+    // Check credits
+    if (user.totalCredits < BATCH_CREDIT_COST) {
       return res.status(402).json(createErrorResponse("VALIDATION_ERROR", `Nicht genügend Credits. Benötigt: ${BATCH_CREDIT_COST}`));
     }
     
@@ -61,8 +60,11 @@ router.post("/generate", auth, dynamicLimiter, async (req, res) => {
       }, "Batch aus Cache geladen"));
     }
     
-    // Get OpenAI client (user's key or platform key)
-    const apiKey = useOwnKey ? user.getApiKey("openai") : process.env.OPENAI_API_KEY;
+    // Get OpenAI client
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json(createErrorResponse("INTERNAL_ERROR", "OPENAI_API_KEY nicht konfiguriert"));
+    }
     const openai = new OpenAI({ apiKey });
     
     // Get user's style prompt
@@ -172,9 +174,7 @@ Jeder Output muss einzigartig sein. Keine Wiederholungen!`;
     };
 
     // Deduct credits
-    if (!useOwnKey) {
-      await user.useCredits(BATCH_CREDIT_COST);
-    }
+    await user.useCredits(BATCH_CREDIT_COST);
     await user.trackUsage("batch", response.usage?.total_tokens);
 
     // Save to history

@@ -1,196 +1,168 @@
 import { z } from "zod";
 
-// ==============================
-// Auth Schemas
-// ==============================
+const PLATFORM_ENUM = ["instagram", "tiktok", "youtube", "twitter", "linkedin"];
+const HOOK_STYLES = ["mixed", "question", "statement", "shocking", "story"];
+const CAPTION_TONES = ["casual", "professional", "funny", "inspirational"];
+const TITLE_STYLES = ["clickbait", "informative", "question", "how-to"];
+const TREND_PLATFORMS = ["instagram", "tiktok", "youtube", "twitter", "linkedin", "all"];
+const TREND_TIMEFRAMES = ["today", "week", "month"];
+const VIRALITY_TYPES = ["hook", "caption", "script", "full"];
+
 export const registerSchema = z.object({
-  email: z
-    .string()
-    .email("Ungültige E-Mail-Adresse")
-    .min(5, "E-Mail zu kurz")
-    .max(100, "E-Mail zu lang")
-    .transform(val => val.toLowerCase().trim()),
-  password: z
-    .string()
-    .min(6, "Passwort muss mindestens 6 Zeichen haben")
-    .max(100, "Passwort zu lang")
+  email: z.string().email().transform((v) => v.toLowerCase().trim()),
+  password: z.string().min(8)
 });
 
 export const loginSchema = z.object({
-  email: z
-    .string()
-    .email("Ungültige E-Mail-Adresse")
-    .transform(val => val.toLowerCase().trim()),
-  password: z
-    .string()
-    .min(1, "Passwort erforderlich")
+  email: z.string().email().transform((v) => v.toLowerCase().trim()),
+  password: z.string().min(1)
 });
 
 export const changePasswordSchema = z.object({
-  currentPassword: z.string().min(1, "Aktuelles Passwort erforderlich"),
-  newPassword: z.string().min(6, "Neues Passwort muss mindestens 6 Zeichen haben")
+  currentPassword: z.string().min(8, "Aktuelles Passwort ist erforderlich"),
+  newPassword: z.string().min(8, "Neues Passwort muss mindestens 8 Zeichen lang sein")
 });
 
-// ==============================
-// Post Upload Schemas
-// ==============================
-const postItemSchema = z.object({
-  content: z.string().optional(),
-  text: z.string().optional(),
-  caption: z.string().optional(),
-  description: z.string().optional(),
-  hashtags: z.array(z.string()).optional(),
-  likes: z.number().optional(),
-  likeCount: z.number().optional(),
-  comments: z.number().optional(),
-  commentCount: z.number().optional(),
-  engagement: z.number().optional(),
-  category: z.string().optional()
-}).refine(data => 
-  data.content || data.text || data.caption || data.description,
-  { message: "Post muss mindestens content, text, caption oder description haben" }
-);
+export const verifySchema = z.object({
+  token: z.string().min(10)
+});
 
-export const uploadPostsSchema = z.array(postItemSchema)
-  .min(1, "Mindestens 1 Post erforderlich")
-  .max(100, "Maximal 100 Posts pro Upload");
+export const platformModeSchema = z.object({
+  platform: z.enum(PLATFORM_ENUM)
+});
 
-// ==============================
-// Generation Schemas
-// ==============================
+export const creatorProfileSchema = z.object({
+  niche: z.string().min(3),
+  toneOfVoice: z.string().min(3),
+  targetAudience: z.string().optional(),
+  contentGoals: z.array(z.string()).default([]),
+  exampleHooks: z.array(z.string()).default([]),
+  exampleCaptions: z.array(z.string()).default([]),
+  bannedWords: z.array(z.string()).default([]),
+  creatorStatement: z.string().optional()
+});
+
 export const generatePromptsSchema = z.object({
-  category: z.string().max(50).optional().default("general"),
-  variantsPerPost: z.number().min(1).max(10).optional().default(3),
-  style: z.enum(["viral", "educational", "entertaining", "inspirational", "promotional"]).optional().default("viral"),
-  tone: z.enum(["engaging", "professional", "casual", "humorous", "serious"]).optional().default("engaging"),
-  language: z.enum(["de", "en"]).optional().default("de")
+  topic: z.string().min(3),
+  platform: z.enum(PLATFORM_ENUM),
+  count: z.coerce.number().min(1).max(10).default(5)
 });
 
 export const generateVideoIdeasSchema = z.object({
-  prompts: z.array(z.string().min(10).max(2000))
-    .min(1, "Mindestens 1 Prompt erforderlich")
-    .max(10, "Maximal 10 Prompts gleichzeitig"),
-  detailed: z.boolean().optional().default(true)
+  prompt: z.string().min(5),
+  platform: z.enum(PLATFORM_ENUM)
 });
 
+export const analysisSchema = z.object({
+  platform: z.enum(PLATFORM_ENUM),
+  caption: z.string().min(10),
+  metrics: z.object({
+    views: z.coerce.number().optional(),
+    likes: z.coerce.number().optional(),
+    comments: z.coerce.number().optional(),
+    saves: z.coerce.number().optional()
+  }).optional()
+});
+
+export const seriesSchema = z.object({
+  topic: z.string().min(3),
+  platform: z.enum(PLATFORM_ENUM),
+  episodes: z.coerce.number().min(5).max(30).default(10)
+});
+
+export const episodeStatusSchema = z.object({
+  seriesId: z.string(),
+  episodeId: z.string(),
+  status: z.enum(["planned", "in_progress", "published", "analyzing"])
+});
+
+export const performanceSchema = z.object({
+  episodeId: z.string(),
+  seriesId: z.string(),
+  views: z.coerce.number().nonnegative(),
+  likes: z.coerce.number().nonnegative(),
+  comments: z.coerce.number().nonnegative(),
+  saves: z.coerce.number().nonnegative()
+});
+
+export const historyQuerySchema = z.object({
+  type: z.enum(["analysis", "prompt", "script", "series"]).optional(),
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(50).default(20)
+});
+
+const uploadPostItemSchema = z.object({
+  content: z.string().min(1).max(4000).optional(),
+  text: z.string().min(1).max(4000).optional(),
+  caption: z.string().min(1).max(4000).optional(),
+  description: z.string().min(1).max(4000).optional(),
+  hashtags: z.array(z.string().min(1).max(80)).max(50).optional(),
+  likes: z.coerce.number().nonnegative().optional(),
+  likeCount: z.coerce.number().nonnegative().optional(),
+  comments: z.coerce.number().nonnegative().optional(),
+  commentCount: z.coerce.number().nonnegative().optional(),
+  engagement: z.coerce.number().nonnegative().optional(),
+  category: z.string().min(2).max(50).optional()
+}).refine((value) => value.content || value.text || value.caption || value.description, {
+  message: "Jeder Post benötigt mindestens ein Textfeld (content/text/caption/description)"
+});
+
+export const uploadPostsSchema = z.array(uploadPostItemSchema).min(1).max(500);
+
+// ==============================
+// Advanced AI Schemas
+// ==============================
+
 export const generateHooksSchema = z.object({
-  topic: z.string().min(3, "Thema zu kurz").max(500, "Thema zu lang"),
-  count: z.number().min(1).max(20).optional().default(10),
-  style: z.enum(["question", "statement", "shocking", "story", "mixed"]).optional().default("mixed")
+  topic: z.string().min(3),
+  count: z.coerce.number().min(1).max(20).default(10),
+  style: z.enum(HOOK_STYLES).default("mixed")
 });
 
 export const generateCaptionsSchema = z.object({
-  topic: z.string().min(3).max(500),
-  tone: z.enum(["casual", "professional", "funny", "inspirational", "educational"]).optional().default("casual"),
+  topic: z.string().min(3),
+  tone: z.enum(CAPTION_TONES).default("casual"),
   includeEmojis: z.boolean().optional().default(true),
   includeHashtags: z.boolean().optional().default(true),
-  count: z.number().min(1).max(10).optional().default(3)
+  count: z.coerce.number().min(1).max(10).default(3)
 });
 
 export const generateTitleSchema = z.object({
-  topic: z.string().min(3).max(500),
-  style: z.enum(["clickbait", "informative", "question", "how-to", "listicle"]).optional().default("clickbait"),
-  count: z.number().min(1).max(10).optional().default(5)
+  topic: z.string().min(3),
+  style: z.enum(TITLE_STYLES).default("clickbait"),
+  count: z.coerce.number().min(1).max(20).default(5)
 });
 
 export const trendAnalysisSchema = z.object({
-  niche: z.string().min(2).max(100),
-  platform: z.enum(["instagram", "tiktok", "youtube", "all"]).optional().default("instagram"),
-  timeframe: z.enum(["today", "week", "month"]).optional().default("week")
+  niche: z.string().min(3),
+  platform: z.enum(TREND_PLATFORMS).default("instagram"),
+  timeframe: z.enum(TREND_TIMEFRAMES).default("week")
 });
 
 export const viralityAnalysisSchema = z.object({
-  content: z.string().min(10).max(5000),
-  type: z.enum(["hook", "caption", "script", "full"]).optional().default("full")
+  content: z.string().min(20),
+  type: z.enum(VIRALITY_TYPES).default("full")
 });
 
-// ==============================
-// Credit Purchase Schema
-// ==============================
-export const purchaseCreditsSchema = z.object({
-  packageId: z.enum(["starter", "pro", "unlimited", "credits_100", "credits_500", "credits_1000"]),
-  paymentMethod: z.enum(["stripe", "paypal"]).optional().default("stripe")
-});
-
-// ==============================
-// Validation Middleware Factory
-// ==============================
 export function validate(schema) {
   return (req, res, next) => {
-    try {
-      const result = schema.safeParse(req.body);
-      
-      if (!result.success) {
-        const errors = result.error.errors.map(err => ({
-          field: err.path.join("."),
-          message: err.message
-        }));
-        
-        return res.status(400).json({
-          success: false,
-          error: {
-            code: 5002,
-            message: "Validierungsfehler",
-            details: errors
-          }
-        });
-      }
-      
-      req.validatedBody = result.data;
-      next();
-    } catch (err) {
+    const parsed = schema.safeParse({
+      ...req.body,
+      ...req.params,
+      ...req.query
+    });
+    if (!parsed.success) {
       return res.status(400).json({
         success: false,
         error: {
           code: 5002,
-          message: "Validierungsfehler",
-          details: err.message
+          message: parsed.error.issues[0]?.message || "Validierung fehlgeschlagen",
+          details: parsed.error.issues
         }
       });
     }
+    req.validated = parsed.data;
+    req.validatedBody = parsed.data;
+    next();
   };
 }
-
-// Für JSON-Array Bodies (Upload)
-export function validateArray(schema) {
-  return (req, res, next) => {
-    try {
-      // Body könnte bereits geparst sein oder als String kommen
-      let data = req.body;
-      if (typeof data === "string") {
-        data = JSON.parse(data);
-      }
-      
-      const result = schema.safeParse(data);
-      
-      if (!result.success) {
-        const errors = result.error.errors.map(err => ({
-          field: err.path.join("."),
-          message: err.message
-        }));
-        
-        return res.status(400).json({
-          success: false,
-          error: {
-            code: 5002,
-            message: "Validierungsfehler",
-            details: errors
-          }
-        });
-      }
-      
-      req.validatedBody = result.data;
-      next();
-    } catch (err) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: 5002,
-          message: "Ungültiges JSON-Format",
-          details: err.message
-        }
-      });
-    }
-  };
-}
-
