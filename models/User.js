@@ -22,6 +22,12 @@ const userSchema = new mongoose.Schema({
   language: { type: String, default: "de" },
   outputLanguages: { type: [String], default: ["de"] },
 
+  organization: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Organization",
+    default: null
+  },
+
   creatorProfile: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "CreatorProfile",
