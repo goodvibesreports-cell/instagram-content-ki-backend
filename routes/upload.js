@@ -31,29 +31,45 @@ async function safeUnlink(filePath) {
 
 router.post("/", optionalAuth, upload.single("file"), async (req, res) => {
   try {
-    if (!req.file) {
+    let json;
+    let sourceFilename = null;
+    let fileSize = null;
+
+    if (req.file) {
+      const filePath = req.file.path;
+      sourceFilename = req.file.originalname;
+      fileSize = req.file.size;
+
+      let raw;
+      try {
+        raw = await fs.promises.readFile(filePath, "utf8");
+      } catch (error) {
+        await safeUnlink(filePath);
+        return res.status(500).json({ success: false, message: "Datei konnte nicht gelesen werden" });
+      }
+
+      try {
+        json = JSON.parse(raw);
+      } catch (error) {
+        await safeUnlink(filePath);
+        return res.status(400).json({ success: false, message: "Datei ist keine gültige JSON" });
+      }
+
+      await safeUnlink(filePath);
+    } else if (req.body && Object.keys(req.body).length) {
+      const payload = req.body.json || req.body.data || req.body;
+      if (typeof payload === "string") {
+        try {
+          json = JSON.parse(payload);
+        } catch {
+          return res.status(400).json({ success: false, message: "JSON-Body ungültig" });
+        }
+      } else {
+        json = payload;
+      }
+    } else {
       return res.status(400).json({ success: false, message: "Keine Datei hochgeladen" });
     }
-
-    const filePath = req.file.path;
-    let raw;
-
-    try {
-      raw = await fs.promises.readFile(filePath, "utf8");
-    } catch (error) {
-      await safeUnlink(filePath);
-      return res.status(500).json({ success: false, message: "Datei konnte nicht gelesen werden" });
-    }
-
-    let json;
-    try {
-      json = JSON.parse(raw);
-    } catch (error) {
-      await safeUnlink(filePath);
-      return res.status(400).json({ success: false, message: "Datei ist keine gültige JSON" });
-    }
-
-    await safeUnlink(filePath);
 
     const { links, posts, stats } = parseTikTokJson(json);
     const analysis = analyzeTikTokPosts(posts, stats);
@@ -62,8 +78,8 @@ router.post("/", optionalAuth, upload.single("file"), async (req, res) => {
       userId: req.user?.id || null,
       platform: "tiktok",
       status: posts.length ? "completed" : "failed",
-      sourceFilename: req.file.originalname,
-      fileSize: req.file.size,
+      sourceFilename: sourceFilename || req.file?.originalname || "direct-json",
+      fileSize: fileSize || req.file?.size || 0,
       totals: {
         links: links.length,
         posts: posts.length,
