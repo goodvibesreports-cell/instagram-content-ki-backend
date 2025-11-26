@@ -194,69 +194,131 @@ app.put("/profile/settings", auth, async (req, res) => {
 // ==============================
 // POST Upload
 // ==============================
-app.post("/upload", optionalAuth, uploadLimiter, upload.single("file"), async (req, res) => {
-  const startTime = Date.now();
-  
+app.post("/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json(createErrorResponse("UPLOAD_NO_FILE"));
+      return res.status(400).json({ error: "No file uploaded" });
     }
 
-    const filePath = req.file.path;
-    logger.info(`File uploaded: ${req.file.originalname}`, { size: req.file.size });
+    const raw = await fs.readFile(req.file.path, "utf-8");
 
-    const content = await fs.readFile(filePath, "utf8");
-    
-    let jsonData;
+    let json;
     try {
-      jsonData = JSON.parse(content);
-    } catch {
-      await fs.unlink(filePath);
-      return res.status(400).json(createErrorResponse("UPLOAD_INVALID_JSON"));
+      json = JSON.parse(raw);
+    } catch (err) {
+      await fs.unlink(req.file.path);
+      return res.status(400).json({ error: "Invalid JSON" });
     }
 
-    // Validate with Zod
-    const validation = uploadPostsSchema.safeParse(jsonData);
-    if (!validation.success) {
-      await fs.unlink(filePath);
-      return res.status(400).json(createErrorResponse("VALIDATION_ERROR", validation.error.errors));
+    let posts = [];
+
+    // ----------------------------------------
+    // CASE 1: Already correct format (array)
+    // ----------------------------------------
+    if (Array.isArray(json)) {
+      posts = json.map(p => ({
+        caption: p.caption || p.text || "",
+        likes: Number(p.likes || p.like_count || 0),
+        views: Number(p.views || p.play_count || 0),
+        comments: Number(p.comments || p.comment_count || 0)
+      }));
     }
 
-    const userId = req.user?.id || null;
-
-    const postsToInsert = validation.data.map(post => ({
-      userId,
-      content: post.content || post.text || post.caption || post.description,
-      caption: post.caption || post.description || "",
-      hashtags: post.hashtags || [],
-      likes: post.likes || post.likeCount || 0,
-      comments: post.comments || post.commentCount || 0,
-      engagement: post.engagement || 0,
-      category: post.category || req.body?.category || "general",
-      source: "upload",
-      metadata: { originalData: post, uploadedAt: new Date() }
-    }));
-
-    if (userId) {
-      await Post.deleteMany({ userId, source: "upload" });
-      await User.findByIdAndUpdate(userId, { $inc: { "usage.uploadsCount": 1 } });
+    // ----------------------------------------
+    // CASE 2: TikTok Video Export
+    // ----------------------------------------
+    else if (json?.Videos?.["Video List"]) {
+      posts = json.Videos["Video List"].map(v => ({
+        caption: v.Caption || v["Video Caption"] || "",
+        likes: Number(v.Likes || v["Like Count"] || 0),
+        views: Number(v.Views || v["Play Count"] || 0),
+        comments: Number(v.Comments || v["Comment Count"] || 0)
+      }));
     }
-    
-    const insertedPosts = await Post.insertMany(postsToInsert);
-    await fs.unlink(filePath);
 
-    const duration = Date.now() - startTime;
-    logger.success(`Upload complete: ${insertedPosts.length} posts`, { duration: `${duration}ms` });
+    // ----------------------------------------
+    // CASE 3: Instagram Export
+    // ----------------------------------------
+    else if (json?.ig_posts || json?.posts) {
+      const arr = json.ig_posts || json.posts;
 
-    return res.json(createSuccessResponse({
-      count: insertedPosts.length,
-      posts: insertedPosts.map(p => ({ id: p._id, content: p.content.substring(0, 100) }))
-    }, `${insertedPosts.length} Posts erfolgreich hochgeladen`));
+      posts = arr.map(i => ({
+        caption: i.caption || i.title || i.text || "",
+        likes: Number(i.likes || i.like_count || 0),
+        views: Number(i.views || i.play_count || 0),
+        comments: Number(i.comments || i.comment_count || 0)
+      }));
+    }
+
+    // ----------------------------------------
+    // CASE 4: Deep automatic search (Universal Fallback)
+    // ----------------------------------------
+    else {
+      // Extract potential posts from ANY nested structure
+      const stack = [json];
+
+      while (stack.length) {
+        const obj = stack.pop();
+
+        if (Array.isArray(obj)) {
+          obj.forEach(o => {
+            if (typeof o === "object") stack.push(o);
+          });
+          continue;
+        }
+
+        if (typeof obj === "object") {
+          // Detect a post-like structure
+          const maybeCaption =
+            obj.caption || obj.text || obj.title || obj.description;
+
+          if (maybeCaption) {
+            posts.push({
+              caption: maybeCaption || "",
+              likes: Number(
+                obj.likes || obj.like_count || obj.stats?.likes || 0
+              ),
+              views: Number(
+                obj.views || obj.play_count || obj.stats?.views || 0
+              ),
+              comments: Number(
+                obj.comments ||
+                  obj.comment_count ||
+                  obj.stats?.comments ||
+                  0
+              )
+            });
+          }
+
+          Object.values(obj).forEach(v => {
+            if (typeof v === "object") stack.push(v);
+          });
+        }
+      }
+    }
+
+    await fs.unlink(req.file.path);
+
+    if (!posts.length) {
+      return res.status(400).json({
+        error:
+          "Unable to detect posts. Unsupported JSON structure. Upload TikTok/Instagram exports."
+      });
+    }
+
+    const uploadedPosts = posts;
+
+    return res.json({
+      message: `Upload erfolgreich: ${uploadedPosts.length} Posts`,
+      posts: uploadedPosts
+    });
 
   } catch (err) {
-    logger.error("Upload error", { error: err.message });
-    if (req.file?.path) await fs.unlink(req.file.path).catch(() => {});
-    return res.status(500).json(createErrorResponse("UPLOAD_FAILED", err.message));
+    console.error(err);
+    if (req.file?.path) {
+      await fs.unlink(req.file.path).catch(() => {});
+    }
+    res.status(500).json({ error: "Upload failed" });
   }
 });
 
