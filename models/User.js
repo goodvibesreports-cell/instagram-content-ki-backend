@@ -2,6 +2,17 @@ import mongoose from "mongoose";
 
 const PLATFORM_MODES = ["instagram", "tiktok", "youtube", "twitter", "linkedin"];
 
+const sessionSchema = new mongoose.Schema({
+  sessionId: { type: String, required: true },
+  tokenHash: { type: String, required: true },
+  device: { type: String, default: "unknown" },
+  ip: { type: String, default: "" },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+  lastUsedAt: { type: Date, default: Date.now },
+  expiresAt: { type: Date, required: true }
+}, { _id: false });
+
 const userSchema = new mongoose.Schema({
   email: {
     type: String,
@@ -32,6 +43,18 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "CreatorProfile",
     default: null
+  },
+
+  security: {
+    failedLoginAttempts: { type: Number, default: 0 },
+    lastFailedLoginAt: { type: Date, default: null },
+    lockedUntil: { type: Date, default: null },
+    lastLoginAt: { type: Date, default: null }
+  },
+
+  sessions: {
+    type: [sessionSchema],
+    default: []
   },
 
   contentStyle: {

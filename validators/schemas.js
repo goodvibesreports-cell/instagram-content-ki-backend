@@ -22,6 +22,18 @@ export const loginSchema = z.object({
   password: z.string().min(1)
 });
 
+export const refreshTokenSchema = z.object({
+  refreshToken: z.string().min(40, "Refresh Token ist ungültig")
+});
+
+export const logoutSchema = z.object({
+  refreshToken: z.string().min(40, "Refresh Token ist ungültig").optional(),
+  fromAllDevices: z.boolean().optional().default(false)
+}).refine((value) => Boolean(value.refreshToken) || value.fromAllDevices === true, {
+  message: "Refresh Token erforderlich, außer bei Logout von allen Geräten",
+  path: ["refreshToken"]
+});
+
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(8, "Aktuelles Passwort ist erforderlich"),
   newPassword: z.string().min(8, "Neues Passwort muss mindestens 8 Zeichen lang sein")

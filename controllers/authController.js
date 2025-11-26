@@ -5,13 +5,26 @@ import {
   getCurrentUser,
   updatePlatformMode,
   updatePassword,
-  provisionTestAccount
+  provisionTestAccount,
+  refreshAuthSession,
+  revokeSessions
 } from "../services/authService.js";
 import { createSuccessResponse } from "../utils/errorHandler.js";
 
+function getSessionMeta(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim()
+    || req.ip
+    || "";
+  return {
+    ip,
+    device: req.headers["user-agent"] || "unknown"
+  };
+}
+
 export async function register(req, res, next) {
   try {
-    const payload = await registerUser(req.validated);
+    const payload = await registerUser(req.validated, getSessionMeta(req));
     res.status(201).json(createSuccessResponse(payload, "Registrierung erfolgreich!"));
   } catch (err) {
     next(err);
@@ -33,7 +46,7 @@ export async function registerTestAccount(req, res, next) {
       email: req.validated.email,
       password: req.validated.password,
       credits: req.validated.credits ?? 10000
-    });
+    }, getSessionMeta(req));
 
     res.status(201).json(createSuccessResponse(payload, "Testaccount bereitgestellt"));
   } catch (err) {
@@ -43,7 +56,7 @@ export async function registerTestAccount(req, res, next) {
 
 export async function verify(req, res, next) {
   try {
-    const payload = await verifyUser(req.validated.token);
+    const payload = await verifyUser(req.validated.token, getSessionMeta(req));
     res.json(createSuccessResponse(payload, "E-Mail bestätigt – du bist jetzt eingeloggt."));
   } catch (err) {
     next(err);
@@ -52,7 +65,7 @@ export async function verify(req, res, next) {
 
 export async function login(req, res, next) {
   try {
-    const payload = await loginUser(req.validated);
+    const payload = await loginUser(req.validated, getSessionMeta(req));
     res.json(createSuccessResponse(payload, "Login erfolgreich!"));
   } catch (err) {
     next(err);
@@ -81,6 +94,25 @@ export async function changePassword(req, res, next) {
   try {
     await updatePassword(req.user.id, req.validated.currentPassword, req.validated.newPassword);
     res.json(createSuccessResponse(null, "Passwort erfolgreich geändert"));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function refreshSession(req, res, next) {
+  try {
+    const payload = await refreshAuthSession(req.validated.refreshToken, getSessionMeta(req));
+    res.json(createSuccessResponse(payload, "Session aktualisiert"));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function logout(req, res, next) {
+  try {
+    await revokeSessions(req.user.id, req.validated.refreshToken, req.validated.fromAllDevices);
+    const message = req.validated.fromAllDevices ? "Alle Sessions beendet" : "Logout erfolgreich";
+    res.json(createSuccessResponse(null, message));
   } catch (err) {
     next(err);
   }

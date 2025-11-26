@@ -3,6 +3,9 @@ import multer from "multer";
 import fs from "fs";
 import path from "path";
 import parseTikTokJson from "../utils/tiktokParser.js";
+import analyzeTikTokPosts from "../utils/tiktokAnalyzer.js";
+import { optionalAuth } from "../middleware/auth.js";
+import UploadDataset from "../models/UploadDataset.js";
 
 const router = express.Router();
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -26,7 +29,7 @@ async function safeUnlink(filePath) {
   }
 }
 
-router.post("/", upload.single("file"), async (req, res) => {
+router.post("/", optionalAuth, upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: "Keine Datei hochgeladen" });
@@ -52,21 +55,55 @@ router.post("/", upload.single("file"), async (req, res) => {
 
     await safeUnlink(filePath);
 
-    const links = parseTikTokJson(json);
+    const { links, posts, stats } = parseTikTokJson(json);
+    const analysis = analyzeTikTokPosts(posts, stats);
 
-    if (!links.length) {
-      return res.status(200).json({
-        success: true,
-        message: "Datei verarbeitet, aber keine TikTok-Links gefunden",
-        links: []
-      });
-    }
+    const dataset = await UploadDataset.create({
+      userId: req.user?.id || null,
+      platform: "tiktok",
+      status: posts.length ? "completed" : "failed",
+      sourceFilename: req.file.originalname,
+      fileSize: req.file.size,
+      totals: {
+        links: links.length,
+        posts: posts.length,
+        ignoredLinks: stats.ignoredLinks || 0
+      },
+      links,
+      posts,
+      metadata: {
+        stats,
+        analysis
+      }
+    });
+
+    const count = posts.length;
+    const datasetSummary = {
+      _id: dataset._id,
+      createdAt: dataset.createdAt,
+      updatedAt: dataset.updatedAt,
+      platform: dataset.platform,
+      status: dataset.status,
+      totals: dataset.totals,
+      sourceFilename: dataset.sourceFilename,
+      fileSize: dataset.fileSize
+    };
 
     return res.status(200).json({
       success: true,
-      message: "TikTok Datei erfolgreich verarbeitet",
-      count: links.length,
-      links
+      message: count
+        ? "TikTok Datei erfolgreich analysiert"
+        : "Keine gültigen TikTok-Videodaten gefunden (nur Watch-History erkannt)",
+      count,
+      datasetId: dataset._id,
+      dataset: datasetSummary,
+      fileName: dataset.sourceFilename,
+      fileSize: dataset.fileSize,
+      analysis,
+      ignoredLinks: stats.ignoredLinks || 0,
+      processedLinks: stats.processedLinks || 0,
+      links,
+      posts
     });
   } catch (error) {
     console.error("Upload Error:", error);
@@ -77,6 +114,52 @@ router.post("/", upload.single("file"), async (req, res) => {
       success: false,
       message: "Serverfehler beim Verarbeiten der Datei"
     });
+  }
+});
+
+router.get("/datasets", optionalAuth, async (req, res) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ success: false, message: "Login erforderlich" });
+    }
+
+    const datasets = await UploadDataset.find({ userId: req.user.id })
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .select("-posts.raw");
+
+    return res.json({
+      success: true,
+      datasets
+    });
+  } catch (error) {
+    console.error("Dataset list error:", error);
+    return res.status(500).json({ success: false, message: "Konnte Upload-Datasets nicht laden" });
+  }
+});
+
+router.get("/datasets/:id", optionalAuth, async (req, res) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ success: false, message: "Login erforderlich" });
+    }
+
+    const dataset = await UploadDataset.findOne({
+      _id: req.params.id,
+      userId: req.user.id
+    });
+
+    if (!dataset) {
+      return res.status(404).json({ success: false, message: "Dataset nicht gefunden" });
+    }
+
+    return res.json({
+      success: true,
+      dataset
+    });
+  } catch (error) {
+    console.error("Dataset detail error:", error);
+    return res.status(500).json({ success: false, message: "Konnte Dataset nicht laden" });
   }
 });
 
