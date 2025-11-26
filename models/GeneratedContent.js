@@ -9,7 +9,7 @@ const generatedContentSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ["prompt", "video_idea", "script"],
+    enum: ["prompt", "video_idea", "script", "hook", "caption", "title", "trend", "virality", "analysis", "series", "batch"],
     required: true
   },
   prompt: {
