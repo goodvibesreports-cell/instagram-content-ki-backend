@@ -49,6 +49,12 @@ dotenv.config();
 // ==============================
 const app = express();
 
+// Extend response timeout for heavy parsing (e.g., large TikTok exports)
+app.use((req, res, next) => {
+  res.setTimeout(1000 * 60 * 5); // 5 minutes
+  next();
+});
+
 // CORS
 const corsOptions = {
   origin: [
