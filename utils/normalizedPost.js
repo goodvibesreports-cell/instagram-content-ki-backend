@@ -8,10 +8,14 @@
  * @property {number} [comments]
  * @property {number} [shares]
  * @property {number} [views]
+ * @property {string} [title]
  * @property {string} [caption]
+ * @property {string} [description]
  * @property {string} [soundOrAudio]
  * @property {string} [location]
  * @property {boolean} [isDeleted]
+ * @property {number} [timestamp]
+ * @property {string[]} [hashtags]
  * @property {Record<string, any>} [meta]
  */
 
@@ -32,19 +36,31 @@ export const SUPPORTED_PLATFORMS = ["tiktok", "instagram", "facebook"];
 
 export function createNormalizedPost(overrides = {}) {
   const fallbackId = `post-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const resolvedDate = overrides.date || new Date().toISOString();
+  const resolvedTimestamp =
+    typeof overrides.timestamp === "number"
+      ? overrides.timestamp
+      : (() => {
+          const parsed = new Date(resolvedDate);
+          return Number.isNaN(parsed.getTime()) ? Date.now() : parsed.getTime();
+        })();
   return {
     id: overrides.id || overrides.link || fallbackId,
     platform: overrides.platform || "tiktok",
-    date: overrides.date || new Date().toISOString(),
+    date: resolvedDate,
+    timestamp: resolvedTimestamp,
     link: overrides.link || "",
     likes: Number(overrides.likes) || 0,
     comments: Number(overrides.comments) || 0,
     shares: Number(overrides.shares) || 0,
     views: Number(overrides.views) || 0,
+    title: overrides.title || "",
     caption: overrides.caption || "",
+    description: overrides.description || "",
     soundOrAudio: overrides.soundOrAudio || "",
     location: overrides.location || "",
     isDeleted: Boolean(overrides.isDeleted),
+    hashtags: overrides.hashtags || [],
     meta: overrides.meta || {}
   };
 }
