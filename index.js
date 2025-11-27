@@ -70,8 +70,8 @@ app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
 // Middleware
-app.use(express.json({ limit: "200mb" }));
-app.use(express.urlencoded({ limit: "200mb", extended: true }));
+app.use(express.json({ limit: "500mb" }));
+app.use(express.urlencoded({ limit: "500mb", extended: true }));
 app.use(requestLogger);
 app.use(abuseDetection);
 app.use(generalLimiter);

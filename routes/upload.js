@@ -1,39 +1,20 @@
 import express from "express";
 import multer from "multer";
-import fs from "fs";
-import path from "path";
-import { parseTiktokJson } from "../utils/parsers/tiktokParser.js";
-import { parseInstagramJson } from "../utils/parsers/instagramParser.js";
-import { parseFacebookJson } from "../utils/parsers/facebookParser.js";
 import analyzeContent from "../utils/contentAnalyzer.js";
-import { clampPlatform, normalizedFromTikTokVideo } from "../utils/normalizedPost.js";
-import { parseTikTokExport } from "../utils/tiktokParser.js";
+import { clampPlatform } from "../utils/normalizedPost.js";
 import { analyzeTikTokVideos } from "../utils/tiktokAnalyzer.js";
-import { parseFolderFiles } from "../utils/folderParser.js";
+import { processSingleFileUpload, processFolderUpload } from "../utils/universalUploader.js";
 import { optionalAuth } from "../middleware/auth.js";
 import UploadDataset from "../models/UploadDataset.js";
 
 const router = express.Router();
-const uploadDir = path.join(process.cwd(), "uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
 
 const upload = multer({
-  dest: uploadDir,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 500 * 1024 * 1024 // 500MB to support very large exports/ZIPs
   }
 });
-
-async function safeUnlink(filePath) {
-  if (!filePath) return;
-  try {
-    await fs.promises.unlink(filePath);
-  } catch {
-    // ignore cleanup errors
-  }
-}
 
 function rebuildTikTokVideoFromPost(post) {
   if (!post) return null;
@@ -55,6 +36,29 @@ function rebuildTikTokVideoFromPost(post) {
   };
 }
 
+function summarizeDataset(dataset) {
+  if (!dataset) return null;
+  return {
+    _id: dataset._id,
+    createdAt: dataset.createdAt,
+    updatedAt: dataset.updatedAt,
+    platform: dataset.platform,
+    status: dataset.status,
+    totals: dataset.totals,
+    sourceFilename: dataset.sourceFilename,
+    fileSize: dataset.fileSize
+  };
+}
+
+function buildMetaPayload(aggregate) {
+  return {
+    summary: aggregate.summary,
+    totals: aggregate.totals,
+    ignoredEntries: aggregate.ignoredEntries,
+    rawFilesMeta: aggregate.rawFilesMeta
+  };
+}
+
 /**
  * POST /upload
  * Content-Type: multipart/form-data
@@ -71,116 +75,80 @@ function rebuildTikTokVideoFromPost(post) {
  */
 router.post("/", optionalAuth, upload.single("file"), async (req, res) => {
   try {
-    let json;
-    let sourceFilename = null;
-    let fileSize = null;
-
-    if (req.file) {
-      const filePath = req.file.path;
-      sourceFilename = req.file.originalname;
-      fileSize = req.file.size;
-
-      let raw;
-      try {
-        raw = await fs.promises.readFile(filePath, "utf8");
-      } catch (error) {
-        await safeUnlink(filePath);
-        return res.status(500).json({ success: false, message: "Datei konnte nicht gelesen werden" });
-      }
-
-      try {
-        json = JSON.parse(raw);
-      } catch (error) {
-        await safeUnlink(filePath);
-        return res.status(400).json({ success: false, message: "Datei ist keine gültige JSON" });
-      }
-
-      await safeUnlink(filePath);
-    } else if (req.body && Object.keys(req.body).length) {
-      const payload = req.body.json || req.body.data || req.body;
-      if (typeof payload === "string") {
-        try {
-          json = JSON.parse(payload);
-        } catch {
-          return res.status(400).json({ success: false, message: "JSON-Body ungültig" });
-        }
-      } else {
-        json = payload;
-      }
-    } else {
+    if (!req.file) {
       return res.status(400).json({ success: false, message: "Keine Datei hochgeladen" });
     }
-
-    const requestedPlatform = clampPlatform(req.body?.platform || req.query?.platform || "tiktok");
-    const parserMap = {
-      tiktok: parseTiktokJson,
-      instagram: parseInstagramJson,
-      facebook: parseFacebookJson
-    };
-    const parser = parserMap[requestedPlatform];
-    if (!parser) {
-      return res.status(400).json({ success: false, message: `Unsupported platform: ${requestedPlatform}` });
+    if (!req.file.size) {
+      return res.status(400).json({ success: false, message: "Datei ist leer (0 Bytes)" });
     }
 
-    const normalizedPosts = parser(json) || [];
-    if (!normalizedPosts.length) {
-      console.warn(`[Upload] Keine Posts erkannt für Plattform ${requestedPlatform}`);
-      return res.status(400).json({ success: false, message: "Keine Posts im Upload gefunden" });
+    const platformHint = clampPlatform(req.body?.platform || req.query?.platform || "tiktok");
+    const aggregate = processSingleFileUpload(req.file, { platformHint });
+
+    if (aggregate.platform === "unknown" && !aggregate.normalizedPosts.length) {
+      return res.status(400).json({
+        success: false,
+        message: "Dateiformat konnte nicht erkannt werden",
+        meta: buildMetaPayload(aggregate)
+      });
     }
 
-    const analysis = analyzeContent(normalizedPosts, { platformFilter: requestedPlatform });
+    const normalizedPosts = aggregate.normalizedPosts;
+    const analysis = analyzeContent(normalizedPosts, { platformFilter: aggregate.platform });
+    const tiktokAnalysis = aggregate.platform === "tiktok" ? analyzeTikTokVideos(aggregate.videos) : null;
 
     let dataset = null;
     try {
       dataset = await UploadDataset.create({
         userId: req.user?.id || null,
-        platform: requestedPlatform,
-        rawPlatform: requestedPlatform,
+        platform: aggregate.platform,
+        rawPlatform: aggregate.platform,
         status: normalizedPosts.length ? "completed" : "failed",
-        sourceFilename: sourceFilename || "direct-json",
-        fileSize: fileSize || 0,
+        sourceFilename: req.file.originalname,
+        fileSize: req.file.size,
+        sourceType: "upload-single",
+        rawJsonSnippet: aggregate.rawSnippet,
         totals: {
           posts: normalizedPosts.length,
           links: normalizedPosts.length
         },
         posts: normalizedPosts,
+        videos: aggregate.videos,
+        rawFilesMeta: aggregate.rawFilesMeta,
+        ignoredEntries: aggregate.ignoredEntries,
         metadata: {
-          analysis
-        },
-        rawJsonSnippet: json?.Profile || json?.profile || {}
+          analysis,
+          tiktokAnalysis,
+          meta: buildMetaPayload(aggregate)
+        }
       });
     } catch (persistError) {
       console.error("Dataset persistence error:", persistError);
     }
 
-    const datasetSummary = dataset
-      ? {
-          _id: dataset._id,
-          createdAt: dataset.createdAt,
-          updatedAt: dataset.updatedAt,
-          platform: dataset.platform,
-          status: dataset.status,
-          totals: dataset.totals,
-          sourceFilename: dataset.sourceFilename,
-          fileSize: dataset.fileSize
-        }
-      : null;
-
-    return res.status(200).json({
+    const responsePayload = {
       success: true,
-      platform: requestedPlatform,
-      message: `Datei (${requestedPlatform}) erfolgreich verarbeitet`,
+      platform: aggregate.platform,
+      detectedType: aggregate.detectedType,
+      message: normalizedPosts.length
+        ? `Datei (${aggregate.platform}) erfolgreich verarbeitet`
+        : aggregate.totals.watchHistory
+        ? "Keine gültigen TikTok-Videodaten gefunden (nur Watch-History erkannt)"
+        : "Keine Posts im Upload gefunden",
       totalPosts: normalizedPosts.length,
       postsPreview: normalizedPosts.slice(0, 10),
       analysis,
+      tiktokAnalysis,
+      meta: buildMetaPayload(aggregate),
       datasetId: dataset?._id || null,
-      dataset: datasetSummary
-    });
+      dataset: summarizeDataset(dataset),
+      fileName: req.file.originalname,
+      fileSize: req.file.size
+    };
+
+    return res.status(200).json(responsePayload);
   } catch (error) {
     console.error("Upload/Analyze error:", error);
-    if (req.file?.path) {
-      await safeUnlink(req.file.path);
-    }
     return res.status(400).json({
       success: false,
       message: "Fehler beim Verarbeiten des Exports",
@@ -190,111 +158,80 @@ router.post("/", optionalAuth, upload.single("file"), async (req, res) => {
 });
 
 router.post("/folder", optionalAuth, upload.array("files"), async (req, res) => {
-  const files = req.files || [];
-  if (!files.length) {
-    return res.status(400).json({ success: false, message: "Keine Dateien hochgeladen" });
-  }
-
-  const fileEntries = [];
-  let totalSize = 0;
-
-  for (const file of files) {
-    totalSize += file.size || 0;
-    try {
-      const buffer = await fs.promises.readFile(file.path);
-      fileEntries.push({ buffer, fileName: file.originalname, fileSize: file.size });
-    } catch (error) {
-      console.error("Folder Upload read error:", error);
-    } finally {
-      await safeUnlink(file.path);
-    }
-  }
-
-  const { videos, deletedCount, summary } = parseFolderFiles(fileEntries);
-
-  if (!videos.length) {
-    return res.json({
-      platform: "tiktok",
-      totalFiles: summary.totalFiles,
-      processedFiles: summary.processedFiles,
-      ignoredFiles: summary.ignoredFiles,
-      videoCount: 0,
-      deletedCount: 0,
-      analysis: {
-        postingTimes: { hours: [], days: [] },
-        viralVideos: [],
-        patterns: {},
-        creatorDNA: {}
-      }
-    });
-  }
-
-  const normalizedPosts = videos.map(normalizedFromTikTokVideo).filter(Boolean);
-  const postingAnalysis = analyzeTikTokVideos(videos);
-  const deepAnalysis = analyzeContent(normalizedPosts, { platformFilter: "tiktok" });
-  const analysisPayload = {
-    postingTimes: {
-      hours: postingAnalysis.bestPostingHours,
-      days: postingAnalysis.postingDaysOfWeek
-    },
-    viralVideos: postingAnalysis.topVideos,
-    patterns: {
-      keywords: deepAnalysis.themes?.dominantThemes || [],
-      sounds: deepAnalysis.sounds?.topSounds || [],
-      stats: deepAnalysis.stats
-    },
-    creatorDNA: deepAnalysis.creatorDNA
-  };
-
-  let datasetId = null;
-  let datasetSummary = null;
   try {
-    const dataset = await UploadDataset.create({
-      userId: req.user?.id || null,
-      platform: "tiktok",
-      rawPlatform: "tiktok",
-      status: "completed",
-      sourceFilename: files[0]?.originalname || "folder-upload",
-      fileSize: totalSize,
-      totals: {
-        posts: normalizedPosts.length,
-        links: normalizedPosts.length
-      },
-      posts: normalizedPosts,
-      videos,
-      ignoredEntries: summary.ignoredEntries,
-      sourceType: "upload-folder",
-      metadata: {
-        summary,
-        analysis: analysisPayload
-      }
-    });
-    datasetId = dataset._id;
-    datasetSummary = {
-      _id: dataset._id,
-      platform: dataset.platform,
-      status: dataset.status,
-      totals: dataset.totals,
-      sourceFilename: dataset.sourceFilename,
-      fileSize: dataset.fileSize,
-      createdAt: dataset.createdAt,
-      updatedAt: dataset.updatedAt
-    };
-  } catch (error) {
-    console.error("Dataset persistence error (folder upload):", error);
-  }
+    const files = req.files || [];
+    if (!files.length) {
+      return res.status(400).json({ success: false, message: "Keine Dateien hochgeladen" });
+    }
 
-  return res.json({
-    platform: "tiktok",
-    totalFiles: summary.totalFiles,
-    processedFiles: summary.processedFiles,
-    ignoredFiles: summary.ignoredFiles,
-    videoCount: videos.length,
-    deletedCount,
-    analysis: analysisPayload,
-    datasetId,
-    dataset: datasetSummary
-  });
+    const totalSize = files.reduce((sum, file) => sum + (file.size || 0), 0);
+    const platformHint = clampPlatform(req.body?.platform || req.query?.platform || "tiktok");
+    const aggregate = processFolderUpload(files, { platformHint, totalFiles: files.length });
+
+    if (aggregate.platform === "unknown" && !aggregate.normalizedPosts.length) {
+      return res.status(400).json({
+        success: false,
+        message: "Keine relevanten Dateien im Ordner gefunden",
+        meta: buildMetaPayload(aggregate)
+      });
+    }
+
+    const normalizedPosts = aggregate.normalizedPosts;
+    const analysis = analyzeContent(normalizedPosts, { platformFilter: aggregate.platform });
+    const tiktokAnalysis = aggregate.platform === "tiktok" ? analyzeTikTokVideos(aggregate.videos) : null;
+    const deletedCount = aggregate.videos.filter((video) => video.isDeleted).length;
+
+    let dataset = null;
+    try {
+      dataset = await UploadDataset.create({
+        userId: req.user?.id || null,
+        platform: aggregate.platform,
+        rawPlatform: aggregate.platform,
+        status: normalizedPosts.length ? "completed" : "failed",
+        sourceFilename: files[0]?.originalname || "folder-upload",
+        fileSize: totalSize,
+        sourceType: "upload-folder",
+        rawJsonSnippet: aggregate.rawSnippet,
+        totals: {
+          posts: normalizedPosts.length,
+          links: normalizedPosts.length
+        },
+        posts: normalizedPosts,
+        videos: aggregate.videos,
+        rawFilesMeta: aggregate.rawFilesMeta,
+        ignoredEntries: aggregate.ignoredEntries,
+        metadata: {
+          analysis,
+          tiktokAnalysis,
+          meta: buildMetaPayload(aggregate)
+        }
+      });
+    } catch (error) {
+      console.error("Dataset persistence error (folder upload):", error);
+    }
+
+    return res.json({
+      success: true,
+      platform: aggregate.platform,
+      totalFiles: aggregate.summary.totalFiles,
+      processedFiles: aggregate.summary.processedFiles,
+      ignoredFiles: aggregate.summary.ignoredFiles,
+      videoCount: aggregate.videos.length,
+      deletedCount,
+      analysis,
+      tiktokAnalysis,
+      meta: buildMetaPayload(aggregate),
+      datasetId: dataset?._id || null,
+      dataset: summarizeDataset(dataset)
+    });
+  } catch (error) {
+    console.error("Folder upload error:", error);
+    return res.status(400).json({
+      success: false,
+      message: "Ordner-Upload fehlgeschlagen",
+      error: error?.message || "Unbekannter Fehler"
+    });
+  }
 });
 
 router.get("/datasets", optionalAuth, async (req, res) => {

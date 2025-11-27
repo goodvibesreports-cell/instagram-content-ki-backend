@@ -4,11 +4,14 @@ const LINK_PATTERNS = ["tiktok.com", "tiktokv.com", "tiktokv.eu"];
 const SECTION_DEFINITIONS = [
   { name: "Post.Posts", path: ["Post", "Posts", "VideoList"], type: "posted" },
   { name: "Post.RecentlyDeleted", path: ["Post", "Recently Deleted Posts"], arrayKey: "PostList", type: "deleted" },
+  { name: "Post.RecentlyDeletedVideos", path: ["Post", "Recently Deleted Videos", "VideoList"], type: "deleted" },
   { name: "Activity.Videos", path: ["Activity", "Videos", "VideoList"], type: "posted" },
+  { name: "Activity.AppLog.Videos", path: ["Activity", "App Log", "Videos"], arrayKey: "VideoList", type: "posted" },
   { name: "Videos.VideoList", path: ["Videos", "VideoList"], type: "posted" },
   { name: "Videos.RecentlyDeleted", path: ["Videos", "Recently Deleted Videos"], arrayKey: "VideoList", type: "deleted" },
   { name: "Activity.FavoriteVideos", path: ["Activity", "Favorite Videos"], arrayKey: "VideoList", type: "posted" },
   { name: "Activity.LikeList", path: ["Activity", "Like List"], arrayKey: "ItemFavoriteList", type: "posted" },
+  { name: "Activity.FavoriteList", path: ["Activity", "Favorite List"], arrayKey: "FavoriteVideoList", type: "posted" },
   { name: "Deleted.Videos", path: ["Deleted", "Videos"], arrayKey: "VideoList", type: "deleted" },
   { name: "ShareHistory", path: ["Share History", "ShareHistoryList"], type: "watch" },
   { name: "Activity.VideoBrowsingHistory", path: ["Activity", "Video Browsing History"], arrayKey: "VideoList", type: "watch" },
@@ -22,6 +25,7 @@ const LIKES_KEYS = ["Likes", "Like Count", "LikeCount", "LikesCount", "Like", "F
 const TITLE_KEYS = ["Title", "Text", "Caption", "Description"];
 const SOUND_KEYS = ["Sound", "Audio Name", "SoundName"];
 const LOCATION_KEYS = ["Location", "ShootLocation"];
+const COVER_KEYS = ["CoverImage", "Cover", "Thumbnail", "VideoCover", "Cover Url"];
 const DATE_FIELDS = ["Date", "Create Time", "CreationTime", "CreateTime", "Timestamp", "time", "Time", "DateCreated"];
 
 function normalizeNumber(value) {
@@ -37,6 +41,13 @@ function sanitizeText(value) {
   if (!trimmed || ["n/a", "na", "none", "null", "undefined"].includes(trimmed.toLowerCase())) {
     return "";
   }
+  return trimmed;
+}
+
+function sanitizeAssetUrl(value) {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
   return trimmed;
 }
 
@@ -112,15 +123,22 @@ function buildVideo(item = {}, ctx = {}) {
     return null;
   }
 
+  const titleValue = sanitizeText(extractField(item, TITLE_KEYS) || item.caption || item.text);
+  const soundValue = sanitizeText(extractField(item, SOUND_KEYS));
+  const locationValue = sanitizeText(extractField(item, LOCATION_KEYS));
+  const coverImage = sanitizeAssetUrl(extractField(item, COVER_KEYS));
+
   return {
     platform: "tiktok",
     date: dateObj.toISOString(),
     timestamp: dateObj.getTime(),
     link: candidateLink,
     likes: normalizeNumber(extractField(item, LIKES_KEYS)),
-    title: sanitizeText(extractField(item, TITLE_KEYS) || item.caption || item.text),
-    sound: sanitizeText(extractField(item, SOUND_KEYS)),
-    location: sanitizeText(extractField(item, LOCATION_KEYS)),
+    title: titleValue || "Unbekanntes TikTok Video",
+    caption: titleValue || "Unbekanntes TikTok Video",
+    sound: soundValue || "Unbekannter Sound",
+    location: locationValue || "Unbekannt",
+    coverImage: coverImage || null,
     sourceSection: ctx.sourceSection || "unknown",
     isDeleted: Boolean(ctx.isDeleted)
   };
@@ -253,5 +271,10 @@ export function parseTikTokExport(json, sourceFileName = "unknown") {
     ignoredEntries: [...ignoredMap.values()],
     totals
   };
+}
+
+export function extractRealPostsFromAnyTikTokSchema(json) {
+  const result = parseTikTokExport(json);
+  return result.videos;
 }
 
