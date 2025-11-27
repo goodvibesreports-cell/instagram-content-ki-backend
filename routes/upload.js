@@ -1,12 +1,13 @@
-import express from "express";
-import multer from "multer";
-import { clampPlatform } from "../utils/normalizedPost.js";
-import { processUploadBuffer } from "../utils/multiPlatformEngine.js";
-import analyzeUnifiedItems from "../utils/unifiedAnalyzer.js";
-import analyzeContent from "../utils/contentAnalyzer.js";
-import { analyzeTikTokVideos } from "../utils/tiktokAnalyzer.js";
-import { optionalAuth } from "../middleware/auth.js";
-import UploadDataset from "../models/UploadDataset.js";
+const express = require("express");
+const multer = require("multer");
+const { clampPlatform } = require("../utils/normalizedPost.js");
+const { processUploadBuffer } = require("../utils/multiPlatformEngine.js");
+const analyzeUnifiedItems = require("../utils/unifiedAnalyzer.js");
+const analyzeContent = require("../utils/contentAnalyzer.js");
+const { analyzeTikTokVideos } = require("../utils/tiktokAnalyzer.js");
+const safeTikTokParser = require("../utils/safeTikTokParser.js");
+const { optionalAuth } = require("../middleware/auth.js");
+const UploadDataset = require("../models/UploadDataset.js");
 
 const router = express.Router();
 
@@ -16,6 +17,9 @@ const upload = multer({
     fileSize: 500 * 1024 * 1024 // 500MB
   }
 });
+
+const SAFE_STREAM_THRESHOLD = 8 * 1024 * 1024;
+const SAFE_RESPONSE_MESSAGE = "File too large - metadata only";
 
 function rebuildTikTokVideoFromPost(post) {
   if (!post) return null;
@@ -104,6 +108,133 @@ function mapRawFilesMeta(meta = []) {
   }));
 }
 
+function respondGracefully(res, {
+  message = SAFE_RESPONSE_MESSAGE,
+  ignoredEntries = [],
+  extras = {}
+} = {}) {
+  return res.status(200).json({
+    success: true,
+    message,
+    posts: [],
+    items: [],
+    ignoredEntries,
+    ...extras
+  });
+}
+
+function isLikelyTikTokFile(fileName = "") {
+  return /tiktok/i.test(fileName || "");
+}
+
+function shouldUseSafeTikTok(file, platformHint) {
+  if (!file) return false;
+  if (platformHint === "tiktok") return true;
+  if (file.size >= SAFE_STREAM_THRESHOLD) return true;
+  return isLikelyTikTokFile(file.originalname);
+}
+
+async function parseWithSafeTikTokParser(file, sourceType = "upload-single") {
+  const result = await safeTikTokParser(file.buffer, {
+    fileName: file.originalname || "upload.json",
+    streaming: file.size >= SAFE_STREAM_THRESHOLD
+  });
+  const items = result.items || [];
+  const ignoredEntries = result.ignoredEntries || [];
+  const perPlatform = {
+    tiktok: {
+      count: items.length,
+      items
+    }
+  };
+  const rawFilesMeta = [
+    {
+      fileName: file.originalname || "upload.json",
+      platform: "tiktok",
+      size: file.size,
+      confidence: 1,
+      reason: result.summary?.message || "safe-parser",
+      sourceType,
+      itemsExtracted: items.length
+    }
+  ];
+  return {
+    items,
+    ignoredEntries,
+    rawFilesMeta,
+    perPlatform,
+    primaryPlatform: "tiktok",
+    rawSnippet: result.rawSnippet || null,
+    flags: { ...result.flags, safeParser: true },
+    summary: {
+      totalFiles: 1,
+      processedFiles: items.length ? 1 : 0,
+      ignoredFiles: items.length ? 0 : 1,
+      safeParser: true
+    }
+  };
+}
+
+async function parseFolderWithSafeTikTok(files = []) {
+  const aggregate = {
+    items: [],
+    ignoredEntries: [],
+    rawFilesMeta: [],
+    perPlatform: {
+      tiktok: {
+        count: 0,
+        items: []
+      }
+    },
+    primaryPlatform: "tiktok",
+    summary: {
+      totalFiles: files.length,
+      processedFiles: 0,
+      ignoredFiles: 0,
+      safeParser: true
+    },
+    flags: {
+      safeParser: true
+    }
+  };
+
+  for (const file of files) {
+    const parsed = await safeTikTokParser(file.buffer, {
+      fileName: file.originalname || "folder.json",
+      streaming: file.size >= SAFE_STREAM_THRESHOLD
+    });
+
+    const items = parsed.items || [];
+    const ignored = parsed.ignoredEntries || [];
+    aggregate.items.push(...items);
+    aggregate.ignoredEntries.push(
+      ...ignored.map((entry) => ({
+        ...entry,
+        fileName: file.originalname
+      }))
+    );
+    aggregate.rawFilesMeta.push({
+      fileName: file.originalname || "folder.json",
+      platform: "tiktok",
+      size: file.size,
+      confidence: 1,
+      reason: parsed.summary?.message || "safe-parser",
+      sourceType: "upload-folder",
+      itemsExtracted: items.length
+    });
+    if (items.length) {
+      aggregate.summary.processedFiles += 1;
+    } else {
+      aggregate.summary.ignoredFiles += 1;
+    }
+    aggregate.perPlatform.tiktok.items.push(...items);
+  }
+
+  aggregate.perPlatform.tiktok.count = aggregate.perPlatform.tiktok.items.length;
+  aggregate.flags.usedSafeParser = true;
+  return aggregate;
+}
+
 async function persistDataset({ sanitizedItems, aggregate, userId, sourceInfo, analysis }) {
   const dataset = await UploadDataset.create({
     userId: userId || null,
@@ -147,14 +278,25 @@ router.post("/", optionalAuth, upload.single("file"), async (req, res) => {
   console.log("[UPLOAD] Single file upload gestartet");
   try {
     if (!req.file) {
-      throw new Error("Keine Datei hochgeladen");
+      return respondGracefully(res, {
+        message: "Keine Datei hochgeladen",
+        ignoredEntries: [{ reason: "no_file" }]
+      });
     }
     if (!req.file.size) {
-      throw new Error("Datei ist leer (0 Bytes)");
+      return respondGracefully(res, {
+        message: "Datei ist leer (0 Bytes)",
+        ignoredEntries: [{ reason: "empty_file" }]
+      });
     }
 
     const platformHint = clampPlatform(req.body?.platform || req.query?.platform || "unknown");
-    const aggregate = processUploadBuffer([req.file], { platformHint, sourceType: "upload-single" });
+    let aggregate;
+    if (shouldUseSafeTikTok(req.file, platformHint)) {
+      aggregate = await parseWithSafeTikTokParser(req.file, "upload-single");
+    } else {
+      aggregate = processUploadBuffer([req.file], { platformHint, sourceType: "upload-single" });
+    }
     const sanitizedItems = sanitizeItems(aggregate.items || [], aggregate.primaryPlatform);
     const perPlatform = buildPerPlatformSummary(sanitizedItems);
     const analysis = analyzeUnifiedItems(sanitizedItems);
@@ -181,9 +323,9 @@ router.post("/", optionalAuth, upload.single("file"), async (req, res) => {
     return res.json(responsePayload);
   } catch (error) {
     console.error("Upload/Analyze error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error?.message || "Fehler beim Verarbeiten des Exports"
+    return respondGracefully(res, {
+      message: SAFE_RESPONSE_MESSAGE,
+      ignoredEntries: [{ reason: error?.message || "unbekannter-fehler" }]
     });
   }
 });
@@ -193,11 +335,22 @@ router.post("/folder", optionalAuth, upload.array("files"), async (req, res) => 
   try {
     const files = req.files || [];
     if (!files.length) {
-      throw new Error("Keine Dateien hochgeladen");
+      return respondGracefully(res, {
+        message: "Keine Dateien hochgeladen",
+        ignoredEntries: [{ reason: "no_files" }]
+      });
     }
 
     const platformHint = clampPlatform(req.body?.platform || req.query?.platform || "unknown");
-    const aggregate = processUploadBuffer(files, { platformHint, sourceType: "upload-folder" });
+    let aggregate;
+    const canUseSafeParser = platformHint === "tiktok" && files.every((file) => /\.json$/i.test(file.originalname || "") || (file.mimetype || "").includes("json"));
+    if (canUseSafeParser) {
+      aggregate = await parseFolderWithSafeTikTok(files);
+    } else if (platformHint === "tiktok" && files.length === 1 && shouldUseSafeTikTok(files[0], platformHint)) {
+      aggregate = await parseWithSafeTikTokParser(files[0], "upload-folder");
+    } else {
+      aggregate = processUploadBuffer(files, { platformHint, sourceType: "upload-folder" });
+    }
     const sanitizedItems = sanitizeItems(aggregate.items || [], aggregate.primaryPlatform);
     const perPlatform = buildPerPlatformSummary(sanitizedItems);
     const analysis = analyzeUnifiedItems(sanitizedItems);
@@ -223,9 +376,9 @@ router.post("/folder", optionalAuth, upload.array("files"), async (req, res) => 
     return res.json(responsePayload);
   } catch (error) {
     console.error("Folder upload error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error?.message || "Ordner-Upload fehlgeschlagen"
+    return respondGracefully(res, {
+      message: SAFE_RESPONSE_MESSAGE,
+      ignoredEntries: [{ reason: error?.message || "ordner-fehler" }]
     });
   }
 });
@@ -415,5 +568,5 @@ router.get("/analysis/:platform", optionalAuth, async (req, res) => {
   }
 });
 
-export default router;
+module.exports = router;
 

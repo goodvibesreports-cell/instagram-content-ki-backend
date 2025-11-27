@@ -1,22 +1,23 @@
-import express from "express";
-import cors from "cors";
-import mongoose from "mongoose";
-import dotenv from "dotenv";
-import uploadRoutes from "./routes/upload.js";
-import authRoutes from "./routes/auth.js";
-import adminRoutes from "./routes/admin.js";
-import aiRoutes from "./routes/ai.js";
-import batchRoutes from "./routes/batch.js";
-import calendarRoutes from "./routes/calendar.js";
-import creatorRoutes from "./routes/creator.js";
-import exportRoutes from "./routes/export.js";
-import historyRoutes from "./routes/history.js";
-import promptRoutes from "./routes/prompt.js";
-import scriptsRoutes from "./routes/scripts.js";
-import seriesRoutes from "./routes/series.js";
-import settingsRoutes from "./routes/settings.js";
-import shareRoutes from "./routes/share.js";
-import teamRoutes from "./routes/team.js";
+const express = require("express");
+const cors = require("cors");
+const mongoose = require("mongoose");
+const dotenv = require("dotenv");
+
+const uploadRoutes = require("./routes/upload.js");
+const authRoutes = require("./routes/auth.js");
+const adminRoutes = require("./routes/admin.js");
+const aiRoutes = require("./routes/ai.js");
+const batchRoutes = require("./routes/batch.js");
+const calendarRoutes = require("./routes/calendar.js");
+const creatorRoutes = require("./routes/creator.js");
+const exportRoutes = require("./routes/export.js");
+const historyRoutes = require("./routes/history.js");
+const promptRoutes = require("./routes/prompt.js");
+const scriptsRoutes = require("./routes/scripts.js");
+const seriesRoutes = require("./routes/series.js");
+const settingsRoutes = require("./routes/settings.js");
+const shareRoutes = require("./routes/share.js");
+const teamRoutes = require("./routes/team.js");
 
 dotenv.config();
 
@@ -28,8 +29,15 @@ app.use(
     credentials: true
   })
 );
-app.use(express.json({ limit: "250mb" }));
-app.use(express.urlencoded({ extended: true, limit: "250mb" }));
+app.use(express.json({ limit: "500mb" }));
+app.use(express.urlencoded({ extended: true, limit: "500mb" }));
+app.use(express.raw({ limit: "500mb", type: () => true }));
+
+app.use((req, res, next) => {
+  req.setTimeout(600_000);
+  res.setTimeout(600_000);
+  next();
+});
 
 app.use((req, res, next) => {
   console.log(`[HTTP] ${req.method} ${req.url}`);
@@ -37,10 +45,7 @@ app.use((req, res, next) => {
 });
 
 mongoose
-  .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-  })
+  .connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB verbunden"))
   .catch((err) => {
     console.error("❌ Mongo Fehler:", err);
@@ -67,7 +72,6 @@ app.get("/", (req, res) => {
   res.send("CreatorOS Backend läuft 🚀");
 });
 
-// global error handler
 app.use((err, req, res, next) => {
   console.error("❌ Unhandled error:", err);
   res.status(err.status || 500).json({
