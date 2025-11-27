@@ -22,7 +22,7 @@ if (!fs.existsSync(uploadDir)) {
 const upload = multer({
   dest: uploadDir,
   limits: {
-    fileSize: 50 * 1024 * 1024 // 50MB to support large exports
+    fileSize: 500 * 1024 * 1024 // 500MB to support very large exports/ZIPs
   }
 });
 
