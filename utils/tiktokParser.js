@@ -1,210 +1,257 @@
-const STORAGE_LINK_REGEX = /https:\/\/[a-z0-9-]+\.tiktokv\.(?:com|eu|us)\/storage\//i;
 const SHARE_LINK_PREFIX = "https://www.tiktokv.com/share/video/";
-const BLOCKED_LINK_PATTERNS = [
-  "tiktok.com/login",
-  "redirect_url=",
-  "webapp-useastred",
-  "tos-no1a-ve-0068c001-no%2F"
+const LINK_PATTERNS = ["tiktok.com", "tiktokv.com", "tiktokv.eu"];
+
+const SECTION_DEFINITIONS = [
+  { name: "Post.Posts", path: ["Post", "Posts", "VideoList"], type: "posted" },
+  { name: "Post.RecentlyDeleted", path: ["Post", "Recently Deleted Posts"], arrayKey: "PostList", type: "deleted" },
+  { name: "Activity.Videos", path: ["Activity", "Videos", "VideoList"], type: "posted" },
+  { name: "Videos.VideoList", path: ["Videos", "VideoList"], type: "posted" },
+  { name: "Videos.RecentlyDeleted", path: ["Videos", "Recently Deleted Videos"], arrayKey: "VideoList", type: "deleted" },
+  { name: "Activity.FavoriteVideos", path: ["Activity", "Favorite Videos"], arrayKey: "VideoList", type: "posted" },
+  { name: "Activity.LikeList", path: ["Activity", "Like List"], arrayKey: "ItemFavoriteList", type: "posted" },
+  { name: "Deleted.Videos", path: ["Deleted", "Videos"], arrayKey: "VideoList", type: "deleted" },
+  { name: "ShareHistory", path: ["Share History", "ShareHistoryList"], type: "watch" },
+  { name: "Activity.VideoBrowsingHistory", path: ["Activity", "Video Browsing History"], arrayKey: "VideoList", type: "watch" },
+  { name: "WatchHistory", path: ["WatchHistory", "VideoList"], type: "watch" },
+  { name: "Activity.Videos.Legacy", path: ["Activity", "Videos"], arrayKey: "VideoList", type: "posted" },
+  { name: "Videos.Legacy", path: ["Videos"], arrayKey: "VideoList", type: "posted" }
 ];
 
-const TITLE_FIELDS = ["Caption", "Video Caption", "Title", "Description", "videoCaption"];
-const LIKE_FIELDS = ["Likes", "Like Count", "like_count"];
-const VIEW_FIELDS = ["Views", "Play Count", "Plays", "view_count"];
-const COMMENT_FIELDS = ["Comments", "Comment Count", "comment_count"];
-const TIMESTAMP_FIELDS = ["Date", "Create Time", "Timestamp", "Created", "time", "CreationTime"];
+const FALLBACK_ARRAY_KEYS = ["VideoList", "ItemFavoriteList", "FavoriteVideoList", "List", "items"];
+const LIKES_KEYS = ["Likes", "Like Count", "LikeCount", "LikesCount", "Like", "Favorite"];
+const TITLE_KEYS = ["Title", "Text", "Caption", "Description"];
+const SOUND_KEYS = ["Sound", "Audio Name", "SoundName"];
+const LOCATION_KEYS = ["Location", "ShootLocation"];
+const DATE_FIELDS = ["Date", "Create Time", "CreationTime", "CreateTime", "Timestamp", "time", "Time", "DateCreated"];
 
-function toNumber(value) {
+function normalizeNumber(value) {
   if (value === null || value === undefined) return 0;
-  if (typeof value === "number") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   const parsed = Number(String(value).replace(/[^\d.-]/g, ""));
-  return Number.isNaN(parsed) ? 0 : parsed;
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function normalizeCaption(item) {
-  for (const key of TITLE_FIELDS) {
-    if (item[key]) {
-      const value = String(item[key]).trim();
-      if (value && value !== "N/A") {
-        return value;
-      }
+function sanitizeText(value) {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed || ["n/a", "na", "none", "null", "undefined"].includes(trimmed.toLowerCase())) {
+    return "";
+  }
+  return trimmed;
+}
+
+function isTikTokLink(link) {
+  if (typeof link !== "string") return false;
+  return LINK_PATTERNS.some((pattern) => link.includes(pattern));
+}
+
+function normalizeDate(value) {
+  if (!value) return null;
+  if (typeof value === "number") {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  const str = String(value).trim();
+  if (!str) return null;
+  const isoCandidate = /^\d{4}-\d{2}-\d{2}(?:\s|\T)\d{2}:\d{2}:\d{2}/.test(str) ? str.replace(" ", "T") : str;
+  const dateObj = new Date(isoCandidate);
+  return Number.isNaN(dateObj.getTime()) ? null : dateObj;
+}
+
+function coerceArray(node, preferredKey) {
+  if (!node) return null;
+  if (Array.isArray(node)) return node;
+  if (preferredKey && Array.isArray(node[preferredKey])) {
+    return node[preferredKey];
+  }
+  for (const key of FALLBACK_ARRAY_KEYS) {
+    if (Array.isArray(node[key])) {
+      return node[key];
     }
   }
-  return "";
+  return null;
 }
 
-function hasMetric(item) {
-  return (
-    LIKE_FIELDS.some(key => item[key] !== undefined) ||
-    VIEW_FIELDS.some(key => item[key] !== undefined) ||
-    COMMENT_FIELDS.some(key => item[key] !== undefined)
-  );
-}
-
-function isShareLink(link) {
-  return typeof link === "string" && link.startsWith(SHARE_LINK_PREFIX);
-}
-
-function isStorageLink(link) {
-  return typeof link === "string" && STORAGE_LINK_REGEX.test(link);
-}
-
-function sanitizeLink(linkCandidate = "") {
-  if (!isStorageLink(linkCandidate)) {
-    return "";
+function extractList(root, path = [], arrayKey) {
+  if (!root) return null;
+  let node = root;
+  for (const segment of path) {
+    if (!node || typeof node !== "object") {
+      return null;
+    }
+    node = node[segment];
   }
-  if (BLOCKED_LINK_PATTERNS.some(pattern => linkCandidate.includes(pattern))) {
-    return "";
-  }
-  return linkCandidate;
+  return coerceArray(node, arrayKey);
 }
 
-function buildPostPayload(item, linkCandidate = "") {
-  const caption =
-    normalizeCaption(item) ||
-    (item.Title && item.Title !== "N/A" ? item.Title : "") ||
-    item.Description ||
-    item.text ||
-    item.caption ||
-    item.Link ||
-    item.URL ||
-    item.Date ||
-    "TikTok Post";
-
-  return {
-    caption: caption.trim(),
-    likes: LIKE_FIELDS.reduce((val, key) => (val !== 0 ? val : toNumber(item[key])), 0),
-    views: VIEW_FIELDS.reduce((val, key) => (val !== 0 ? val : toNumber(item[key])), 0),
-    comments: COMMENT_FIELDS.reduce((val, key) => (val !== 0 ? val : toNumber(item[key])), 0),
-    link: linkCandidate || "",
-    hashtags: extractHashtags(caption),
-    timestamp: parseTimestamp(item),
-    raw: item
-  };
-}
-
-function extractHashtags(text = "") {
-  const matches = text.match(/#([A-Za-z0-9_]+)/g);
-  if (!matches) return [];
-  return matches.map(tag => tag.toLowerCase());
-}
-
-function parseTimestamp(item) {
-  for (const key of TIMESTAMP_FIELDS) {
-    if (item[key]) {
-      const ts = Date.parse(item[key]);
-      if (!Number.isNaN(ts)) {
-        return new Date(ts);
-      }
+function extractField(item, keys, transformer = (v) => v) {
+  for (const key of keys) {
+    if (key in item && item[key] !== undefined && item[key] !== null) {
+      return transformer(item[key]);
     }
   }
   return undefined;
 }
 
-function parseTikTokJson(json) {
-  const links = new Set();
-  const posts = [];
-
-  const stats = {
-    processedLinks: 0,
-    ignoredLinks: 0
-  };
-
-  function shouldSkipCandidate(item) {
-    if (!item || typeof item !== "object") {
-      return true;
-    }
-    const linkCandidate = item.Link || item.URL || item.ShareLink;
-    if (!linkCandidate) {
-      return true;
-    }
-    if (isShareLink(linkCandidate)) {
-      stats.ignoredLinks += 1;
-      return true;
-    }
-    if (!isStorageLink(linkCandidate)) {
-      stats.ignoredLinks += 1;
-      return true;
-    }
-    if (!item.Date) {
-      stats.ignoredLinks += 1;
-      return true;
-    }
-    return false;
+function buildVideo(item = {}, ctx = {}) {
+  if (!item || typeof item !== "object") return null;
+  const candidateLink = item.Link || item.URL || item.VideoLink || item.Uri || item.href;
+  if (!candidateLink || !isTikTokLink(candidateLink) || candidateLink.startsWith(SHARE_LINK_PREFIX)) {
+    return null;
   }
 
-  function processItem(item) {
-    if (shouldSkipCandidate(item)) {
-      return;
-    }
-    const linkCandidate = sanitizeLink(item.Link || item.URL || item.ShareLink);
-    if (!linkCandidate) {
-      stats.ignoredLinks += 1;
-      return;
-    }
-    stats.processedLinks += 1;
-    links.add(linkCandidate);
-    posts.push(buildPostPayload(item, linkCandidate));
+  const rawDate =
+    extractField(item, DATE_FIELDS) ||
+    (item.Extra && extractField(item.Extra, DATE_FIELDS)) ||
+    item.DateDeleted;
+  const dateObj = normalizeDate(rawDate);
+  if (!dateObj) {
+    return null;
   }
 
-  function collectFromPostList(list) {
-    list.forEach(item => processItem(item));
-  }
-
-  function extract(node) {
-    if (node === null || node === undefined) return;
-
-    if (typeof node === "string") {
-      const sanitized = sanitizeLink(node);
-      if (sanitized) {
-        links.add(sanitized);
-      } else if (isShareLink(node)) {
-        stats.ignoredLinks += 1;
-      }
-      return;
-    }
-
-    if (Array.isArray(node)) {
-      node.forEach(child => extract(child));
-      return;
-    }
-
-    if (typeof node === "object") {
-      if (Array.isArray(node.PostList)) {
-        collectFromPostList(node.PostList);
-      }
-
-      Object.values(node).forEach(value => {
-        if (Array.isArray(value) && value.every(item => typeof item === "object" && "Link" in item)) {
-          collectFromPostList(value);
-          return;
-        }
-        if (Array.isArray(value) || (typeof value === "object" && value !== null)) {
-          extract(value);
-        }
-      });
-
-      const maybeCaption =
-        node.caption ||
-        node.text ||
-        node.title ||
-        node.description ||
-        node.Caption ||
-        (node.Title && node.Title !== "N/A" ? node.Title : "");
-      if (node.Link || node.URL || node.ShareLink) {
-        processItem(node);
-      } else if (maybeCaption || hasMetric(node)) {
-        posts.push(buildPostPayload(node, ""));
-      }
-    }
-  }
-
-  extract(json);
   return {
-    links: Array.from(links),
-    posts,
-    stats
+    platform: "tiktok",
+    date: dateObj.toISOString(),
+    timestamp: dateObj.getTime(),
+    link: candidateLink,
+    likes: normalizeNumber(extractField(item, LIKES_KEYS)),
+    title: sanitizeText(extractField(item, TITLE_KEYS) || item.caption || item.text),
+    sound: sanitizeText(extractField(item, SOUND_KEYS)),
+    location: sanitizeText(extractField(item, LOCATION_KEYS)),
+    sourceSection: ctx.sourceSection || "unknown",
+    isDeleted: Boolean(ctx.isDeleted)
   };
 }
 
-export default parseTikTokJson;
+function addIgnored(ignoredMap, totals, reason, example) {
+  const entry = ignoredMap.get(reason) || { reason, count: 0, examples: [] };
+  entry.count += 1;
+  if (example && entry.examples.length < 5 && !entry.examples.includes(example)) {
+    entry.examples.push(example);
+  }
+  ignoredMap.set(reason, entry);
+  totals.ignored += 1;
+}
+
+function isWatchSection(name) {
+  if (!name) return false;
+  const needle = name.toLowerCase();
+  return needle.includes("watch") || needle.includes("browsing") || needle.includes("history");
+}
+
+export function extractVideoLinksFromAnyObject(node, currentPath = [], results = [], seenCollections = null) {
+  if (!node || typeof node !== "object") {
+    return results;
+  }
+
+  if (Array.isArray(node)) {
+    if (seenCollections?.has(node)) {
+      return results;
+    }
+    const hasLinkEntries = node.some((entry) => entry && typeof entry === "object" && isTikTokLink(entry.Link || entry.URL || entry.href));
+    if (hasLinkEntries) {
+      results.push({
+        list: node,
+        sourceSection: currentPath.join(".") || "detected"
+      });
+      return results;
+    }
+    node.forEach((item, index) => extractVideoLinksFromAnyObject(item, [...currentPath, `#${index}`], results, seenCollections));
+    return results;
+  }
+
+  const keys = Object.keys(node);
+  if (isTikTokLink(node.Link || node.URL || node.href)) {
+    results.push({
+      list: [node],
+      sourceSection: currentPath.join(".") || "detected"
+    });
+    return results;
+  }
+
+  keys.forEach((key) => {
+    extractVideoLinksFromAnyObject(node[key], [...currentPath, key], results, seenCollections);
+  });
+  return results;
+}
+
+export function parseTikTokExport(json, sourceFileName = "unknown") {
+  const videos = [];
+  const ignoredMap = new Map();
+  const seenKeys = new Set();
+  const totals = { videos: 0, ignored: 0, watchHistory: 0 };
+  let primarySource = null;
+  const processedCollections = new WeakSet();
+
+  function pushVideo(item, ctx) {
+    const video = buildVideo(item, ctx);
+    if (!video) {
+      addIgnored(ignoredMap, totals, "invalid_video_entry", item?.Link || item?.URL || "missing-link");
+      return;
+    }
+    const dedupeKey = `${video.link}|${video.timestamp || ""}`;
+    if (seenKeys.has(dedupeKey)) return;
+    seenKeys.add(dedupeKey);
+    if (!primarySource && ctx.type !== "watch") {
+      primarySource = ctx.sourceSection || "auto";
+    }
+    videos.push(video);
+  }
+
+  SECTION_DEFINITIONS.forEach((section) => {
+    const list = extractList(json, section.path, section.arrayKey);
+    if (!Array.isArray(list)) return;
+    processedCollections.add(list);
+    list.forEach((item) => {
+      const link = item?.Link || item?.URL || item?.VideoLink;
+      if (!isTikTokLink(link)) {
+        addIgnored(ignoredMap, totals, "invalid_video_entry", link || section.name);
+        return;
+      }
+      if (section.type === "watch") {
+        totals.watchHistory += 1;
+        addIgnored(ignoredMap, totals, "watch_history", link);
+        return;
+      }
+      pushVideo(item, { sourceSection: section.name, isDeleted: section.type === "deleted", type: section.type });
+    });
+  });
+
+  const fallbackEntries = extractVideoLinksFromAnyObject(json, [], [], processedCollections);
+  fallbackEntries.forEach(({ list, sourceSection }) => {
+    if (!Array.isArray(list)) return;
+    list.forEach((item) => {
+      const link = item?.Link || item?.URL;
+      if (!isTikTokLink(link)) return;
+      if (isWatchSection(sourceSection)) {
+        totals.watchHistory += 1;
+        addIgnored(ignoredMap, totals, "watch_history", link);
+        return;
+      }
+      pushVideo(item, { sourceSection: sourceSection || "auto-detected" });
+    });
+  });
+
+  totals.videos = videos.length;
+
+  const rawSnippet = (() => {
+    try {
+      return JSON.stringify(json, null, 2).split("\n").slice(0, 20).join("\n");
+    } catch {
+      return null;
+    }
+  })();
+
+  return {
+    rawPlatform: "tiktok",
+    sourceType: primarySource || "auto-detected",
+    rawJsonSnippet: rawSnippet,
+    videos,
+    ignoredEntries: [...ignoredMap.values()],
+    totals
+  };
+}
 
