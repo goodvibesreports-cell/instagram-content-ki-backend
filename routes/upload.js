@@ -4,6 +4,7 @@ import { clampPlatform } from "../utils/normalizedPost.js";
 import { processUploadBuffer } from "../utils/multiPlatformEngine.js";
 import analyzeUnifiedItems from "../utils/unifiedAnalyzer.js";
 import analyzeContent from "../utils/contentAnalyzer.js";
+import { analyzeTikTokVideos } from "../utils/tiktokAnalyzer.js";
 import { optionalAuth } from "../middleware/auth.js";
 import UploadDataset from "../models/UploadDataset.js";
 
@@ -12,7 +13,7 @@ const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 500 * 1024 * 1024 // 500MB to support very large exports/ZIPs
+    fileSize: 500 * 1024 * 1024 // 500MB
   }
 });
 
@@ -36,20 +37,6 @@ function rebuildTikTokVideoFromPost(post) {
   };
 }
 
-function summarizeDataset(dataset) {
-  if (!dataset) return null;
-  return {
-    _id: dataset._id,
-    createdAt: dataset.createdAt,
-    updatedAt: dataset.updatedAt,
-    platform: dataset.platform,
-    status: dataset.status,
-    totals: dataset.totals,
-    sourceFilename: dataset.sourceFilename,
-    fileSize: dataset.fileSize
-  };
-}
-
 /**
  * POST /upload
  * Content-Type: multipart/form-data
@@ -64,175 +51,181 @@ function summarizeDataset(dataset) {
  *   analysis: {...}
  * }
  */
+function toIsoDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+function sanitizeItems(items = [], fallbackPlatform = "unknown") {
+  return items.map((item, index) => {
+    const isoDate = toIsoDate(item.date || item.timestamp);
+    return {
+      id: item.id || item.link || `item-${index}`,
+      platform: (item.platform || fallbackPlatform || "unknown").toLowerCase(),
+      date: isoDate,
+      timestamp: isoDate ? new Date(isoDate).getTime() : null,
+      link: item.link || "",
+      likes: Number.isFinite(item.likes) ? item.likes : Number(item.likes) || 0,
+      comments: Number.isFinite(item.comments) ? item.comments : Number(item.comments) || 0,
+      shares: Number.isFinite(item.shares) ? item.shares : Number(item.shares) || 0,
+      views: Number.isFinite(item.views) ? item.views : Number(item.views) || 0,
+      caption: item.caption || item.title || "",
+      soundOrAudio: item.sound || item.soundOrAudio || "",
+      location: item.location || "",
+      coverImage: item.coverImage || null,
+      hashtags: Array.isArray(item.hashtags) ? item.hashtags : [],
+      isDeleted: Boolean(item.isDeleted),
+      meta: item.meta || {}
+    };
+  });
+}
+
+function buildPerPlatformSummary(items = []) {
+  return items.reduce((acc, item) => {
+    const key = item.platform || "unknown";
+    if (!acc[key]) {
+      acc[key] = { count: 0, items: [] };
+    }
+    acc[key].count += 1;
+    acc[key].items.push(item);
+    return acc;
+  }, {});
+}
+
+function mapRawFilesMeta(meta = []) {
+  return meta.map((entry) => ({
+    fileName: entry.fileName,
+    fileSize: entry.size ?? entry.fileSize ?? 0,
+    platform: entry.platform || "unknown",
+    dataType: entry.reason || entry.dataType || "meta",
+    confidence: entry.confidence ?? null
+  }));
+}
+
+async function persistDataset({ sanitizedItems, aggregate, userId, sourceInfo, analysis }) {
+  const dataset = await UploadDataset.create({
+    userId: userId || null,
+    platform: aggregate.primaryPlatform || "unknown",
+    rawPlatform: aggregate.primaryPlatform || "unknown",
+    status: sanitizedItems.length ? "completed" : "failed",
+    sourceFilename: sourceInfo.fileName,
+    fileSize: sourceInfo.fileSize,
+    sourceType: sourceInfo.sourceType,
+    rawJsonSnippet: aggregate.rawSnippet,
+    totals: {
+      posts: sanitizedItems.length,
+      links: sanitizedItems.length
+    },
+    posts: [],
+    videos: sanitizedItems,
+    rawFilesMeta: mapRawFilesMeta(aggregate.rawFilesMeta),
+    ignoredEntries: aggregate.ignoredEntries || [],
+    metadata: {
+      analysis,
+      perPlatform: buildPerPlatformSummary(sanitizedItems),
+      summary: aggregate.summary,
+      flags: aggregate.flags
+    }
+  });
+  return dataset;
+}
+
+function buildSuccessResponse(datasetId, aggregate, items, perPlatform) {
+  return {
+    success: true,
+    datasetId: datasetId || null,
+    count: items.length,
+    items,
+    ignoredEntries: aggregate.ignoredEntries || [],
+    perPlatform
+  };
+}
+
 router.post("/", optionalAuth, upload.single("file"), async (req, res) => {
+  console.log("[UPLOAD] Single file upload gestartet");
   try {
     if (!req.file) {
-      return res.status(400).json({ success: false, message: "Keine Datei hochgeladen" });
+      throw new Error("Keine Datei hochgeladen");
     }
     if (!req.file.size) {
-      return res.status(400).json({ success: false, message: "Datei ist leer (0 Bytes)" });
+      throw new Error("Datei ist leer (0 Bytes)");
     }
 
     const platformHint = clampPlatform(req.body?.platform || req.query?.platform || "unknown");
     const aggregate = processUploadBuffer([req.file], { platformHint, sourceType: "upload-single" });
-    const primaryPlatform = aggregate.primaryPlatform;
-    const items = aggregate.items || [];
-    const perPlatform = aggregate.perPlatform || {};
-    const analysis = analyzeUnifiedItems(items);
+    const sanitizedItems = sanitizeItems(aggregate.items || [], aggregate.primaryPlatform);
+    const perPlatform = buildPerPlatformSummary(sanitizedItems);
+    const analysis = analyzeUnifiedItems(sanitizedItems);
 
-    let message;
-    if (items.length) {
-      message = "Multi-Platform Analyse abgeschlossen (TikTok, Instagram, Facebook, YouTube).";
-    } else if (aggregate.flags?.hasWatchHistory) {
-      message =
-        "Es wurden keine relevanten Post-/Videodaten gefunden (nur History/Meta-Daten ohne Uploads). Bitte lade einen vollständigen Creator-Export mit Posts/Videos hoch.";
-    } else {
-      message =
-        "Es wurden keine relevanten Post-/Videodaten gefunden. Bitte lade einen vollständigen Creator-Export mit Posts/Videos hoch.";
-    }
+    console.log(
+      `[UPLOAD] Plattform erkannt: ${aggregate.primaryPlatform} – ${sanitizedItems.length} Items · Ignored: ${
+        aggregate.ignoredEntries?.length || 0
+      }`
+    );
 
-    let datasetSummary = null;
-    try {
-      const dataset = await UploadDataset.create({
-        userId: req.user?.id || null,
-        platform: primaryPlatform,
-        rawPlatform: primaryPlatform,
-        status: items.length ? "completed" : "no-data",
-        sourceFilename: req.file.originalname,
+    const dataset = await persistDataset({
+      sanitizedItems,
+      aggregate,
+      userId: req.user?.id || null,
+      sourceInfo: {
+        fileName: req.file.originalname,
         fileSize: req.file.size,
-        sourceType: "upload-single",
-        rawJsonSnippet: aggregate.rawSnippet,
-        totals: {
-          posts: items.length,
-          links: items.length
-        },
-        posts: [],
-        videos: items,
-        rawFilesMeta: aggregate.rawFilesMeta,
-        ignoredEntries: aggregate.ignoredEntries,
-        metadata: {
-          analysis,
-          perPlatform,
-          summary: aggregate.summary,
-          flags: aggregate.flags
-        }
-      });
-      datasetSummary = summarizeDataset(dataset);
-    } catch (persistError) {
-      console.error("Dataset persistence error:", persistError);
-    }
-
-    return res.status(200).json({
-      success: true,
-      platform: primaryPlatform,
-      platforms: Object.keys(perPlatform),
-      count: items.length,
-      totalPosts: items.length,
-      message,
-      itemsPreview: items.slice(0, 10),
-      analysis,
-      perPlatform,
-      summary: aggregate.summary,
-      ignoredEntries: aggregate.ignoredEntries,
-      rawFilesMeta: aggregate.rawFilesMeta,
-      flags: aggregate.flags,
-      datasetId: datasetSummary?._id || null,
-      dataset: datasetSummary,
-      fileName: req.file.originalname,
-      fileSize: req.file.size
+        sourceType: "upload-single"
+      },
+      analysis
     });
+
+    const responsePayload = buildSuccessResponse(dataset?._id, aggregate, sanitizedItems, perPlatform);
+    return res.json(responsePayload);
   } catch (error) {
     console.error("Upload/Analyze error:", error);
-    return res.status(400).json({
+    return res.status(500).json({
       success: false,
-      message: "Fehler beim Verarbeiten des Exports",
-      error: error?.message || "Unbekannter Fehler"
+      message: error?.message || "Fehler beim Verarbeiten des Exports"
     });
   }
 });
 
 router.post("/folder", optionalAuth, upload.array("files"), async (req, res) => {
+  console.log("[UPLOAD] Folder upload gestartet");
   try {
     const files = req.files || [];
     if (!files.length) {
-      return res.status(400).json({ success: false, message: "Keine Dateien hochgeladen" });
+      throw new Error("Keine Dateien hochgeladen");
     }
 
-    const totalSize = files.reduce((sum, file) => sum + (file.size || 0), 0);
     const platformHint = clampPlatform(req.body?.platform || req.query?.platform || "unknown");
     const aggregate = processUploadBuffer(files, { platformHint, sourceType: "upload-folder" });
-    const primaryPlatform = aggregate.primaryPlatform;
-    const items = aggregate.items || [];
-    const perPlatform = aggregate.perPlatform || {};
-    const analysis = analyzeUnifiedItems(items);
+    const sanitizedItems = sanitizeItems(aggregate.items || [], aggregate.primaryPlatform);
+    const perPlatform = buildPerPlatformSummary(sanitizedItems);
+    const analysis = analyzeUnifiedItems(sanitizedItems);
+    const totalSize = files.reduce((sum, file) => sum + (file.size || 0), 0);
 
-    let message;
-    if (items.length) {
-      message = "Multi-Platform Analyse abgeschlossen (TikTok, Instagram, Facebook, YouTube).";
-    } else if (aggregate.flags?.hasWatchHistory) {
-      message =
-        "Es wurden keine relevanten Post-/Videodaten gefunden (nur History/Meta-Daten ohne Uploads). Bitte lade einen vollständigen Creator-Export mit Posts/Videos hoch.";
-    } else {
-      message =
-        "Es wurden keine relevanten Post-/Videodaten gefunden. Bitte lade einen vollständigen Creator-Export mit Posts/Videos hoch.";
-    }
+    console.log(
+      `[UPLOAD][FOLDER] Plattform ${aggregate.primaryPlatform} – Dateien: ${files.length} – Items: ${sanitizedItems.length}`
+    );
 
-    let datasetSummary = null;
-    try {
-      const dataset = await UploadDataset.create({
-        userId: req.user?.id || null,
-        platform: primaryPlatform,
-        rawPlatform: primaryPlatform,
-        status: items.length ? "completed" : "no-data",
-        sourceFilename: files[0]?.originalname || "folder-upload",
+    const dataset = await persistDataset({
+      sanitizedItems,
+      aggregate,
+      userId: req.user?.id || null,
+      sourceInfo: {
+        fileName: files[0]?.originalname || "folder-upload",
         fileSize: totalSize,
-        sourceType: "upload-folder",
-        rawJsonSnippet: aggregate.rawSnippet,
-        totals: {
-          posts: items.length,
-          links: items.length
-        },
-        posts: [],
-        videos: items,
-        rawFilesMeta: aggregate.rawFilesMeta,
-        ignoredEntries: aggregate.ignoredEntries,
-        metadata: {
-          analysis,
-          perPlatform,
-          summary: aggregate.summary,
-          flags: aggregate.flags
-        }
-      });
-      datasetSummary = summarizeDataset(dataset);
-    } catch (error) {
-      console.error("Dataset persistence error (folder upload):", error);
-    }
-
-    return res.json({
-      success: true,
-      platform: primaryPlatform,
-      platforms: Object.keys(perPlatform),
-      message,
-      totalFiles: aggregate.summary.totalFiles,
-      processedFiles: aggregate.summary.processedFiles,
-      ignoredFiles: aggregate.summary.ignoredFiles,
-      count: items.length,
-      itemsPreview: items.slice(0, 10),
-      analysis,
-      perPlatform,
-      summary: aggregate.summary,
-      ignoredEntries: aggregate.ignoredEntries,
-      rawFilesMeta: aggregate.rawFilesMeta,
-      flags: aggregate.flags,
-      datasetId: datasetSummary?._id || null,
-      dataset: datasetSummary
+        sourceType: "upload-folder"
+      },
+      analysis
     });
+
+    const responsePayload = buildSuccessResponse(dataset?._id, aggregate, sanitizedItems, perPlatform);
+    return res.json(responsePayload);
   } catch (error) {
     console.error("Folder upload error:", error);
-    return res.status(400).json({
+    return res.status(500).json({
       success: false,
-      message: "Ordner-Upload fehlgeschlagen",
-      error: error?.message || "Unbekannter Fehler"
+      message: error?.message || "Ordner-Upload fehlgeschlagen"
     });
   }
 });
@@ -339,7 +332,14 @@ router.get("/analysis/:platform", optionalAuth, async (req, res) => {
     });
 
     if (!dataset) {
-      return res.status(404).json({ success: false, message: "Dataset nicht gefunden" });
+      return res.json({
+        success: true,
+        datasetId: null,
+        platform,
+        analysis: null,
+        videoCount: 0,
+        message: "Dataset nicht gefunden"
+      });
     }
 
     if (platform === "tiktok") {
@@ -347,14 +347,14 @@ router.get("/analysis/:platform", optionalAuth, async (req, res) => {
       if (!videos.length && Array.isArray(dataset.posts) && dataset.posts.length) {
         videos = dataset.posts.map(rebuildTikTokVideoFromPost).filter(Boolean);
       }
-
+      const safeVideos = sanitizeItems(videos, "tiktok");
       let tiktokAnalysis = dataset.metadata?.tiktokAnalysis;
-      if (!tiktokAnalysis && videos.length) {
-        tiktokAnalysis = analyzeTikTokVideos(videos);
+      if (!tiktokAnalysis) {
+        tiktokAnalysis = analyzeTikTokVideos(safeVideos);
         dataset.metadata = dataset.metadata || {};
         dataset.metadata.tiktokAnalysis = tiktokAnalysis;
         if (!dataset.videos?.length) {
-          dataset.videos = videos;
+          dataset.videos = safeVideos;
         }
         await dataset.save();
       }
@@ -363,8 +363,8 @@ router.get("/analysis/:platform", optionalAuth, async (req, res) => {
         success: true,
         datasetId,
         platform,
-        analysis: tiktokAnalysis || analyzeTikTokVideos([]),
-        videoCount: videos.length
+        analysis: tiktokAnalysis,
+        videoCount: safeVideos.length
       });
     }
 

@@ -241,6 +241,7 @@ function expandZip(buffer, parentName = "archive.zip") {
 }
 
 export function processUploadBuffer(files = [], { platformHint = null, sourceType = "upload-single" } = {}) {
+  try {
   const queue = [];
   const summary = {
     totalFiles: files.length,
@@ -399,6 +400,20 @@ export function processUploadBuffer(files = [], { platformHint = null, sourceTyp
     },
     flags
   };
+  } catch (error) {
+    console.error("[UploadEngine] processing failed:", error);
+    return {
+      items: [],
+      perPlatform: {},
+      ignoredEntries: [{ reason: "engine-error", detail: error.message }],
+      rawFilesMeta: [],
+      summary: { totalFiles: files.length || 0, processedFiles: 0, ignoredFiles: files.length || 0, ignoredMedia: 0, mediaFiles: [], historyOnlyFiles: 0 },
+      rawSnippet: null,
+      primaryPlatform: platformHint || "unknown",
+      totals: { items: 0, perPlatformCounts: {} },
+      flags: { hasWatchHistory: false }
+    };
+  }
 }
 
 
