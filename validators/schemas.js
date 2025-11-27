@@ -160,6 +160,37 @@ export const viralityAnalysisSchema = z.object({
   type: z.enum(VIRALITY_TYPES).default("full")
 });
 
+export const insightSummarySchema = z.object({
+  analysis: z.object({
+    stats: z.object({
+      totalPosts: z.number().nonnegative().optional(),
+      avgLikes: z.number().nonnegative().optional(),
+      medianLikes: z.number().nonnegative().optional()
+    }).passthrough().optional(),
+    bestTimes: z.object({
+      bestHour: z.number().min(0).max(23).nullable().optional(),
+      hours: z.array(z.record(z.any())).optional()
+    }).passthrough().optional(),
+    bestDays: z.object({
+      bestDay: z.string().optional(),
+      days: z.array(z.record(z.any())).optional()
+    }).passthrough().optional(),
+    creatorDNA: z.object({
+      mood: z.string().optional(),
+      tone: z.string().optional(),
+      narrativeStyle: z.string().optional(),
+      contentPatterns: z.array(z.string()).optional()
+    }).passthrough().optional(),
+    virality: z.record(z.any()).optional(),
+    sounds: z.record(z.any()).optional(),
+    themes: z.record(z.any()).optional()
+  }).passthrough(),
+  meta: z.object({
+    processed_links_count: z.number().nonnegative().optional(),
+    ignored_links_count: z.number().nonnegative().optional()
+  }).optional()
+});
+
 export function validate(schema) {
   return (req, res, next) => {
     const parsed = schema.safeParse({

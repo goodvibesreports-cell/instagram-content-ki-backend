@@ -19,6 +19,8 @@ import calendarRoutes from "./routes/calendar.js";
 import teamRoutes from "./routes/team.js";
 import settingsRoutes from "./routes/settings.js";
 import uploadRoutes from "./routes/upload.js";
+import exportRoutes from "./routes/export.js";
+import shareRoutes from "./routes/share.js";
 
 // Models
 import Post from "./models/Post.js";
@@ -107,6 +109,8 @@ app.use("/calendar", calendarRoutes);
 app.use("/team", teamRoutes);
 app.use("/settings", settingsRoutes);
 app.use("/upload", uploadLimiter, uploadRoutes);
+app.use("/export", exportRoutes);
+app.use("/share", shareRoutes);
 
 // ==============================
 // Healthcheck

@@ -7,7 +7,8 @@ import {
   generateCaptionsSchema,
   generateTitleSchema,
   trendAnalysisSchema,
-  viralityAnalysisSchema
+  viralityAnalysisSchema,
+  insightSummarySchema
 } from "../validators/schemas.js";
 import {
   generateHooks,
@@ -15,6 +16,7 @@ import {
   generateTitles,
   analyzeTrends,
   analyzeVirality,
+  summarizeTikTokInsights,
   CREDIT_COSTS
 } from "../services/aiService.js";
 import { createSuccessResponse, createErrorResponse } from "../utils/errorHandler.js";
@@ -237,6 +239,34 @@ router.post("/virality", optionalAuth, dynamicLimiter, validate(viralityAnalysis
 
   } catch (err) {
     logger.error("Virality analysis error", { error: err.message });
+    return res.status(500).json(createErrorResponse("AI_GENERATION_FAILED", err.message));
+  }
+});
+
+// ==============================
+// TikTok Insights Summary
+// ==============================
+router.post("/summary", optionalAuth, dynamicLimiter, validate(insightSummarySchema), async (req, res) => {
+  try {
+    const creditCheck = await checkCredits(req.user?.id, "insight");
+    if (!creditCheck.allowed) {
+      return res.status(402).json(createErrorResponse("VALIDATION_ERROR", creditCheck.error));
+    }
+
+    const result = await summarizeTikTokInsights(req.validatedBody.analysis);
+    return res.json(
+      createSuccessResponse(
+        {
+          summary: result.summary,
+          raw: result.raw,
+          metadata: result.metadata,
+          creditsRemaining: creditCheck.remaining
+        },
+        "AI Summary erstellt"
+      )
+    );
+  } catch (err) {
+    logger.error("Insight summary error", { error: err.message });
     return res.status(500).json(createErrorResponse("AI_GENERATION_FAILED", err.message));
   }
 });

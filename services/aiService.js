@@ -13,7 +13,8 @@ export const CREDIT_COSTS = Object.freeze({
   title: 1,
   trend: 3,
   virality: 2,
-  batch: 5
+  batch: 5,
+  insight: 2
 });
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
@@ -243,4 +244,70 @@ FORMAT:
     ],
     { type: "virality", maxTokens: 1000, cacheKey: { content, type } }
   );
+}
+
+function tryParseJsonContent(content) {
+  if (!content) return null;
+  const sanitized = content
+    .trim()
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
+  try {
+    return JSON.parse(sanitized);
+  } catch {
+    const match = sanitized.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        return JSON.parse(match[0]);
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+export async function summarizeTikTokInsights(analysisPayload = {}) {
+  const systemPrompt =
+    "Du bist ein Senior TikTok Performance Strategist. Leite klare, umsetzbare Empfehlungen aus den gelieferten Analytics ab.";
+  const formatInstructions = `Gib die Antwort als JSON mit folgenden Feldern aus:
+{
+  "bestTimeStrategy": "konkrete Empfehlung zu Zeiten/ Tagen",
+  "contentStyle": "Empfehlung zur Tonalität & Storytelling",
+  "hookType": "Hook/Pattern, das funktionieren wird",
+  "postingFrequency": "Hinweis zur Frequenz basierend auf Stats",
+  "stopDoing": "Bad Practice, die eingestellt werden sollte"
+}`;
+
+  const response = await callOpenAI(
+    [
+      { role: "system", content: systemPrompt },
+      {
+        role: "user",
+        content: `${formatInstructions}\n\nANALYSE-DATEN:\n${JSON.stringify(analysisPayload, null, 2)}`
+      }
+    ],
+    { type: "insight_summary", maxTokens: 700, temperature: 0.35 }
+  );
+
+  const parsed = tryParseJsonContent(response.content);
+  return {
+    summary:
+      parsed ||
+      {
+        bestTimeStrategy: response.content,
+        contentStyle: "",
+        hookType: "",
+        postingFrequency: "",
+        stopDoing: ""
+      },
+    raw: response.content,
+    metadata: {
+      tokens: response.tokens,
+      duration: response.duration,
+      model: response.model,
+      fromCache: response.fromCache
+    }
+  };
 }
