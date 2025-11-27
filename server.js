@@ -2,7 +2,6 @@ import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
-import { createRequire } from "module";
 import uploadRoutes from "./routes/upload.js";
 import authRoutes from "./routes/auth.js";
 import adminRoutes from "./routes/admin.js";
@@ -12,14 +11,12 @@ import calendarRoutes from "./routes/calendar.js";
 import creatorRoutes from "./routes/creator.js";
 import exportRoutes from "./routes/export.js";
 import historyRoutes from "./routes/history.js";
+import promptRoutes from "./routes/prompt.js";
+import scriptsRoutes from "./routes/scripts.js";
 import seriesRoutes from "./routes/series.js";
 import settingsRoutes from "./routes/settings.js";
 import shareRoutes from "./routes/share.js";
 import teamRoutes from "./routes/team.js";
-
-const require = createRequire(import.meta.url);
-const promptRoutes = require("./routes/prompt.js");
-const scriptsRoutes = require("./routes/scripts.js");
 
 dotenv.config();
 
@@ -65,8 +62,6 @@ app.use("/series", seriesRoutes);
 app.use("/settings", settingsRoutes);
 app.use("/share", shareRoutes);
 app.use("/team", teamRoutes);
-app.use("/prompt", promptRoutes);
-app.use("/scripts", scriptsRoutes);
 
 app.get("/", (req, res) => {
   res.send("CreatorOS Backend läuft 🚀");

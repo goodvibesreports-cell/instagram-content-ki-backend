@@ -1,7 +1,8 @@
-const express = require('express');
+import express from "express";
+import { generatePrompt } from "../controllers/promptController.js";
+
 const router = express.Router();
-const promptController = require('../controllers/promptController');
 
-router.post('/generate-prompt', promptController.generatePrompt);
+router.post("/generate-prompt", generatePrompt);
 
-module.exports = router;
+export default router;

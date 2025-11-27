@@ -1,33 +1,34 @@
-const { Configuration, OpenAIApi } = require('openai');
-const validateData = require('../utils/validateData');
-require('dotenv').config();
+import dotenv from "dotenv";
+import { Configuration, OpenAIApi } from "openai";
+
+dotenv.config();
 
 const configuration = new Configuration({
   apiKey: process.env.OPENAI_API_KEY
 });
 const openai = new OpenAIApi(configuration);
 
-const generatePrompt = async (req, res) => {
+export async function generatePrompt(req, res) {
   try {
-    const data = req.body;
-    const { valid, error } = validateData(data);
-    if (!valid) return res.status(400).json({ error });
+    const data = req.body || {};
+    if (!Object.keys(data).length) {
+      return res.status(400).json({ error: "Keine Daten übergeben" });
+    }
 
-    const response = await openai.createChatCompletion({
-      model: 'gpt-4',
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
       messages: [
-        { role: 'system', content: 'Du bist ein professioneller Social Media Content Creator.' },
-        { role: 'user', content: `Analysiere diese Daten und generiere 3-5 virale Prompts: ${JSON.stringify(data)}` }
+        { role: "system", content: "Du bist ein professioneller Social Media Content Creator." },
+        { role: "user", content: `Analysiere diese Daten und generiere 3-5 virale Prompts: ${JSON.stringify(data)}` }
       ],
-      max_tokens: 400
+      max_completion_tokens: 400
     });
 
-    const prompts = response.data.choices.map(c => c.message.content);
-    res.json({ prompts });
+    const prompts = response.choices?.map((choice) => choice.message?.content).filter(Boolean) || [];
+    return res.json({ prompts });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Fehler bei der Prompt-Generierung' });
+    console.error("Prompt generation error:", err);
+    return res.status(500).json({ error: "Fehler bei der Prompt-Generierung" });
   }
-};
+}
 
-module.exports = { generatePrompt };
