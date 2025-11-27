@@ -5,7 +5,7 @@ const { processUploadBuffer } = require("../utils/multiPlatformEngine.js");
 const analyzeUnifiedItems = require("../utils/unifiedAnalyzer.js");
 const analyzeContent = require("../utils/contentAnalyzer.js");
 const { analyzeTikTokVideos } = require("../utils/tiktokAnalyzer.js");
-const safeTikTokParser = require("../utils/safeTikTokParser.js");
+const safeTikTokStreamParser = require("../utils/safeTikTokStreamParser.js");
 const { optionalAuth } = require("../middleware/auth.js");
 const UploadDataset = require("../models/UploadDataset.js");
 
@@ -108,16 +108,14 @@ function mapRawFilesMeta(meta = []) {
   }));
 }
 
-function respondGracefully(res, {
-  message = SAFE_RESPONSE_MESSAGE,
-  ignoredEntries = [],
-  extras = {}
-} = {}) {
+function respondGracefully(res, { message = SAFE_RESPONSE_MESSAGE, ignoredEntries = [], extras = {} } = {}) {
   return res.status(200).json({
     success: true,
     message,
+    datasetId: null,
     posts: [],
     items: [],
+    analysis: {},
     ignoredEntries,
     ...extras
   });
@@ -135,12 +133,12 @@ function shouldUseSafeTikTok(file, platformHint) {
 }
 
 async function parseWithSafeTikTokParser(file, sourceType = "upload-single") {
-  const result = await safeTikTokParser(file.buffer, {
+  const result = await safeTikTokStreamParser(file.buffer, {
     fileName: file.originalname || "upload.json",
-    streaming: file.size >= SAFE_STREAM_THRESHOLD
+    fileSize: file.size
   });
-  const items = result.items || [];
-  const ignoredEntries = result.ignoredEntries || [];
+  const items = result.posts || [];
+  const ignoredEntries = result.ignored || [];
   const perPlatform = {
     tiktok: {
       count: items.length,
@@ -153,7 +151,7 @@ async function parseWithSafeTikTokParser(file, sourceType = "upload-single") {
       platform: "tiktok",
       size: file.size,
       confidence: 1,
-      reason: result.summary?.message || "safe-parser",
+      reason: result.flags?.metadataOnly ? "metadata-only" : "safe-parser",
       sourceType,
       itemsExtracted: items.length
     }
@@ -199,13 +197,13 @@ async function parseFolderWithSafeTikTok(files = []) {
   };
 
   for (const file of files) {
-    const parsed = await safeTikTokParser(file.buffer, {
+    const parsed = await safeTikTokStreamParser(file.buffer, {
       fileName: file.originalname || "folder.json",
-      streaming: file.size >= SAFE_STREAM_THRESHOLD
+      fileSize: file.size
     });
 
-    const items = parsed.items || [];
-    const ignored = parsed.ignoredEntries || [];
+    const items = parsed.posts || [];
+    const ignored = parsed.ignored || [];
     aggregate.items.push(...items);
     aggregate.ignoredEntries.push(
       ...ignored.map((entry) => ({
@@ -218,7 +216,7 @@ async function parseFolderWithSafeTikTok(files = []) {
       platform: "tiktok",
       size: file.size,
       confidence: 1,
-      reason: parsed.summary?.message || "safe-parser",
+      reason: parsed.flags?.metadataOnly ? "metadata-only" : "safe-parser",
       sourceType: "upload-folder",
       itemsExtracted: items.length
     });
@@ -320,6 +318,8 @@ router.post("/", optionalAuth, upload.single("file"), async (req, res) => {
     });
 
     const responsePayload = buildSuccessResponse(dataset?._id, aggregate, sanitizedItems, perPlatform);
+    responsePayload.posts = sanitizedItems;
+    responsePayload.analysis = analysis;
     return res.json(responsePayload);
   } catch (error) {
     console.error("Upload/Analyze error:", error);
@@ -373,6 +373,8 @@ router.post("/folder", optionalAuth, upload.array("files"), async (req, res) => 
     });
 
     const responsePayload = buildSuccessResponse(dataset?._id, aggregate, sanitizedItems, perPlatform);
+    responsePayload.posts = sanitizedItems;
+    responsePayload.analysis = analysis;
     return res.json(responsePayload);
   } catch (error) {
     console.error("Folder upload error:", error);
@@ -468,15 +470,22 @@ router.get("/analysis/unified/:datasetId", optionalAuth, async (req, res) => {
 router.get("/analysis/:platform", optionalAuth, async (req, res) => {
   try {
     if (!req.user?.id) {
-      return res.status(401).json({ success: false, message: "Login erforderlich" });
+      return res.status(200).json({ success: true, analysis: null, message: "Login erforderlich" });
     }
     const platform = req.params.platform?.toLowerCase();
     if (!SUPPORTED_ANALYSIS_PLATFORMS.includes(platform)) {
-      return res.status(400).json({ success: false, message: "Unbekannte Plattform" });
+      return res.status(200).json({ success: true, analysis: null, message: "Unbekannte Plattform" });
     }
     const datasetId = req.query.datasetId;
     if (!datasetId) {
-      return res.status(400).json({ success: false, message: "datasetId wird benötigt" });
+      return res.json({
+        success: true,
+        datasetId: null,
+        platform,
+        analysis: null,
+        videoCount: 0,
+        message: "datasetId fehlt"
+      });
     }
 
     const dataset = await UploadDataset.findOne({
@@ -516,7 +525,7 @@ router.get("/analysis/:platform", optionalAuth, async (req, res) => {
         success: true,
         datasetId,
         platform,
-        analysis: tiktokAnalysis,
+        analysis: tiktokAnalysis || {},
         videoCount: safeVideos.length
       });
     }
@@ -527,7 +536,7 @@ router.get("/analysis/:platform", optionalAuth, async (req, res) => {
         success: true,
         datasetId,
         platform,
-        analysis: null,
+        analysis: {},
         videoCount: 0
       });
     }
@@ -564,7 +573,7 @@ router.get("/analysis/:platform", optionalAuth, async (req, res) => {
     });
   } catch (error) {
     console.error("Analysis fetch error:", error);
-    return res.status(500).json({ success: false, message: "Analyse konnte nicht geladen werden" });
+    return res.json({ success: true, analysis: null, message: error?.message || "Analyse nicht verfügbar" });
   }
 });
 
