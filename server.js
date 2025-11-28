@@ -47,9 +47,6 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use(express.json({ limit: "500mb" }));
-app.use(express.urlencoded({ extended: true, limit: "500mb" }));
-app.use(express.raw({ limit: "500mb", type: () => true }));
 
 app.use((req, res, next) => {
   req.setTimeout(600_000);
@@ -75,6 +72,10 @@ async function startDatabase() {
 startDatabase();
 
 app.use("/upload", uploadRoutes);
+
+app.use(express.json({ limit: "500mb" }));
+app.use(express.urlencoded({ extended: true, limit: "500mb" }));
+
 app.use("/auth", authRoutes);
 app.use("/admin", adminRoutes);
 app.use("/ai", aiRoutes);
