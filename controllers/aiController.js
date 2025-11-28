@@ -26,10 +26,12 @@ async function promptIdeas(req, res, next) {
     const result = await generatePromptIdeas(userDoc, profile, req.validated);
     await History.create({
       userId: req.user.id,
-      type: "prompt",
-      platform: req.validated.platform,
-      input: req.validated,
-      output: result.content
+      action: "promptIdeas",
+      meta: {
+        platform: req.validated.platform,
+        input: req.validated,
+        output: result.content
+      }
     });
     res.json(createSuccessResponse({ result }));
   } catch (err) {
@@ -44,10 +46,12 @@ async function videoScript(req, res, next) {
     const result = await generateVideoScript(userDoc, profile, req.validated);
     await History.create({
       userId: req.user.id,
-      type: "script",
-      platform: req.validated.platform,
-      input: req.validated,
-      output: result.content
+      action: "videoScript",
+      meta: {
+        platform: req.validated.platform,
+        input: req.validated,
+        output: result.content
+      }
     });
     res.json(createSuccessResponse({ result }));
   } catch (err) {
@@ -62,10 +66,12 @@ async function uploadAnalyze(req, res, next) {
     const result = await analyzeUpload(userDoc, profile, req.validated);
     await History.create({
       userId: req.user.id,
-      type: "analysis",
-      platform: req.validated.platform,
-      input: req.validated,
-      output: result.content
+      action: "uploadAnalyze",
+      meta: {
+        platform: req.validated.platform,
+        input: req.validated,
+        output: result.content
+      }
     });
     res.json(createSuccessResponse({ result }));
   } catch (err) {

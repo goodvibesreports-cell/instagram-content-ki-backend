@@ -3,9 +3,8 @@ const { createSuccessResponse } = require("../utils/errorHandler.js");
 
 function computeTotalCredits(user) {
   if (!user) return 0;
-  if (typeof user.totalCredits === "number") return user.totalCredits;
-  const credits = user.credits || 0;
-  const bonusCredits = user.bonusCredits || 0;
+  const credits = Number(user.credits ?? 0);
+  const bonusCredits = Number(user.bonusCredits ?? 0);
   return credits + bonusCredits;
 }
 

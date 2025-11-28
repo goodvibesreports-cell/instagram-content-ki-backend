@@ -43,7 +43,8 @@ router.post("/", auth, async (req, res) => {
     
     const org = await Organization.create({
       name,
-      owner: req.user.id
+      ownerId: req.user.id,
+      members: [{ userId: req.user.id, role: "owner" }]
     });
     
     // Update user
@@ -66,7 +67,7 @@ router.post("/", auth, async (req, res) => {
 // ==============================
 router.put("/", auth, async (req, res) => {
   try {
-    const org = await Organization.findOne({ owner: req.user.id });
+    const org = await Organization.findOne({ ownerId: req.user.id });
     
     if (!org) {
       return res.status(403).json(createErrorResponse("AUTH_TOKEN_INVALID", "Nur der Team-Owner kann das Team bearbeiten"));
@@ -99,8 +100,8 @@ router.post("/invite", auth, async (req, res) => {
     
     const org = await Organization.findOne({
       $or: [
-        { owner: req.user.id },
-        { "members.user": req.user.id, "members.role": "admin" }
+        { ownerId: req.user.id },
+        { "members.userId": req.user.id, "members.role": "admin" }
       ]
     });
     
@@ -122,13 +123,24 @@ router.post("/invite", auth, async (req, res) => {
     // Check if user exists and is already in team
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
-      const isMember = org.members.find(m => m.user.toString() === existingUser._id.toString());
-      if (isMember || org.owner.toString() === existingUser._id.toString()) {
+      const isMember = org.members.find(m => m.userId.toString() === existingUser._id.toString());
+      if (isMember || org.ownerId.toString() === existingUser._id.toString()) {
         return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "User ist bereits Mitglied"));
       }
     }
     
-    const token = await org.createInvite(email.toLowerCase(), role, req.user.id);
+    const crypto = require("crypto");
+    const token = crypto.randomBytes(24).toString("hex");
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    org.invites = org.invites || [];
+    org.invites.push({
+      email: email.toLowerCase(),
+      role,
+      token,
+      expiresAt,
+      invitedBy: req.user.id
+    });
+    await org.save();
     
     // In production: Send email with invite link
     // For now, just return the token
@@ -177,7 +189,7 @@ router.post("/join", auth, async (req, res) => {
     }
     
     // Add member
-    await org.addMember(req.user.id, invite.role, invite.invitedBy);
+    await org.addMember(req.user.id, invite.role);
     
     // Remove invite
     org.invites = org.invites.filter(i => i.token !== token);
@@ -200,7 +212,7 @@ router.delete("/members/:userId", auth, async (req, res) => {
   try {
     const { userId } = req.params;
     
-    const org = await Organization.findOne({ owner: req.user.id });
+    const org = await Organization.findOne({ ownerId: req.user.id });
     
     if (!org) {
       return res.status(403).json(createErrorResponse("AUTH_TOKEN_INVALID", "Nur der Team-Owner kann Mitglieder entfernen"));
@@ -232,7 +244,7 @@ router.post("/leave", auth, async (req, res) => {
       return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "Du bist in keinem Team"));
     }
     
-    if (org.owner.toString() === req.user.id) {
+    if (org.ownerId.toString() === req.user.id) {
       return res.status(400).json(createErrorResponse("VALIDATION_ERROR", "Als Owner kannst du das Team nicht verlassen. Übertrage zuerst die Ownership oder lösche das Team."));
     }
     
@@ -250,7 +262,7 @@ router.post("/leave", auth, async (req, res) => {
 // ==============================
 router.delete("/", auth, async (req, res) => {
   try {
-    const org = await Organization.findOne({ owner: req.user.id });
+    const org = await Organization.findOne({ ownerId: req.user.id });
     
     if (!org) {
       return res.status(403).json(createErrorResponse("AUTH_TOKEN_INVALID", "Nur der Team-Owner kann das Team löschen"));
@@ -258,17 +270,11 @@ router.delete("/", auth, async (req, res) => {
     
     // Remove organization reference from all members
     for (const member of org.members) {
-      await User.findByIdAndUpdate(member.user, {
+      await User.findByIdAndUpdate(member.userId, {
         organization: null,
         organizationRole: null
       });
     }
-    
-    // Remove from owner
-    await User.findByIdAndUpdate(req.user.id, {
-      organization: null,
-      organizationRole: null
-    });
     
     await org.deleteOne();
     

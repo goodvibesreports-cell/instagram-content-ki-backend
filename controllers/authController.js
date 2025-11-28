@@ -51,25 +51,16 @@ function sanitizeUserPayload(user) {
   if (!user) return null;
   const source = user.toObject ? user.toObject({ virtuals: true }) : { ...user };
   const id = source._id?.toString?.() ?? source.id;
-  const creditsInfo = source.credits;
-  const creditsTotal =
-    typeof creditsInfo === "object"
-      ? Number(creditsInfo.total ?? 0)
-      : Number(creditsInfo ?? source.totalCredits ?? 0);
-  const creditsUsed =
-    typeof creditsInfo === "object"
-      ? Number(creditsInfo.used ?? 0)
-      : Number(source.creditsUsed ?? 0);
+  const credits = Number(source.credits ?? 0);
   const bonusCredits = Number(source.bonusCredits ?? 0);
-  const availableCredits = Math.max(creditsTotal - creditsUsed, 0);
-  const totalCredits = creditsTotal + bonusCredits;
+  const totalCredits = credits + bonusCredits;
   return {
     id,
     email: source.email,
     tier: source.tier || source.plan || "basic",
     verified: Boolean(source.verified),
     platformMode: source.platformMode || "tiktok",
-    credits: availableCredits,
+    credits,
     bonusCredits,
     totalCredits,
     settings: source.settings || {},

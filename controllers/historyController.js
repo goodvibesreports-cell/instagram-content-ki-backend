@@ -3,9 +3,13 @@ const { createSuccessResponse } = require("../utils/errorHandler.js");
 
 async function listHistory(req, res, next) {
   try {
-    const { type, page, limit } = req.validated;
+    const { type, action, page, limit } = req.validated;
     const query = { userId: req.user.id };
-    if (type) query.type = type;
+    if (action) {
+      query.action = action;
+    } else if (type) {
+      query.action = type;
+    }
 
     const [items, total] = await Promise.all([
       History.find(query)

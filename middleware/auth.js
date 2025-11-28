@@ -7,7 +7,7 @@ function sanitizeUserDoc(userDoc) {
   const id = source._id?.toString?.() || source.id;
   const credits = source.credits || 0;
   const bonusCredits = source.bonusCredits || 0;
-  const totalCredits = typeof source.totalCredits === "number" ? source.totalCredits : credits + bonusCredits;
+  const totalCredits = credits + bonusCredits;
   return {
     id,
     email: source.email || "",

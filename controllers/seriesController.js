@@ -31,10 +31,12 @@ async function createSeries(req, res, next) {
 
     await History.create({
       userId: req.user.id,
-      type: "series",
-      platform: req.validated.platform,
-      input: req.validated,
-      output: blueprint.content
+      action: "series",
+      meta: {
+        platform: req.validated.platform,
+        input: req.validated,
+        output: blueprint.content
+      }
     });
 
     res.status(201).json(createSuccessResponse({ series, blueprint }));
