@@ -112,10 +112,16 @@ async function verify(req, res, next) {
 async function login(req, res, next) {
   try {
     const payload = await loginUser(req.validated, getSessionMeta(req));
+    const tokens = {
+      accessToken: payload?.tokens?.accessToken || null,
+      refreshToken: payload?.tokens?.refreshToken || null,
+      expiresIn: payload?.tokens?.expiresIn ?? null,
+      refreshExpiresAt: payload?.tokens?.refreshExpiresAt || null
+    };
     res.json({
       success: true,
-      tokens: payload?.tokens || {},
-      user: payload?.user || null
+      user: payload?.user || null,
+      tokens
     });
   } catch (err) {
     next(err);

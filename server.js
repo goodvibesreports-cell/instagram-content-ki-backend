@@ -1,5 +1,4 @@
 const express = require("express");
-const cors = require("cors");
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 
@@ -28,31 +27,16 @@ const allowedOrigins = [
   "http://localhost:3000"
 ];
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error(`CORS blocked: ${origin}`));
-      }
-    },
-    credentials: true
-  })
-);
-app.options("*", cors());
-
 app.use((req, res, next) => {
-  const requestOrigin = req.headers.origin;
-  if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
-    res.header("Access-Control-Allow-Origin", requestOrigin);
-  } else if (!requestOrigin && allowedOrigins.length) {
-    res.header("Access-Control-Allow-Origin", allowedOrigins[0]);
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
   }
   res.header("Access-Control-Allow-Credentials", "true");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   if (req.method === "OPTIONS") {
-    return res.sendStatus(204);
+    return res.sendStatus(200);
   }
   next();
 });
