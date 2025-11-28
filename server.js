@@ -23,12 +23,39 @@ dotenv.config();
 
 const app = express();
 
+const allowedOrigins = [
+  "https://instagram-content-ki-frontend.onrender.com",
+  "http://localhost:3000"
+];
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS blocked: ${origin}`));
+      }
+    },
     credentials: true
   })
 );
+app.options("*", cors());
+
+app.use((req, res, next) => {
+  const requestOrigin = req.headers.origin;
+  if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
+    res.header("Access-Control-Allow-Origin", requestOrigin);
+  } else if (!requestOrigin && allowedOrigins.length) {
+    res.header("Access-Control-Allow-Origin", allowedOrigins[0]);
+  }
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+  next();
+});
 app.use(express.json({ limit: "500mb" }));
 app.use(express.urlencoded({ extended: true, limit: "500mb" }));
 app.use(express.raw({ limit: "500mb", type: () => true }));
