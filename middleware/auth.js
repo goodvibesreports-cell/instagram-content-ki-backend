@@ -1,69 +1,88 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
-const { createErrorResponse } = require("../utils/errorHandler.js");
 
-async function attachUser(req, decoded) {
-  const user = await User.findById(decoded.id);
-  if (!user) {
-    const err = new Error("User nicht gefunden");
-    err.status = 401;
-    throw err;
-  }
-  req.user = { id: user._id.toString(), email: user.email };
-  req.userDoc = user;
-}
-
-function verifyJwt(token) {
+function getJwtSecret() {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
-    const error = new Error("JWT_SECRET ist nicht gesetzt");
-    error.status = 500;
+    throw new Error("JWT_SECRET ist nicht gesetzt");
+  }
+  return secret;
+}
+
+function buildSafeUser(userDoc) {
+  if (!userDoc) return null;
+  const plain = userDoc.toObject ? userDoc.toObject({ virtuals: true }) : { ...userDoc };
+  plain.id = plain._id?.toString?.() ?? plain.id;
+  const totalCredits =
+    typeof plain.totalCredits === "number"
+      ? plain.totalCredits
+      : (plain.credits || 0) + (plain.bonusCredits || 0);
+  plain.totalCredits = totalCredits;
+  return plain;
+}
+
+async function verifyRequestUser(req) {
+  const authHeader = req.headers.authorization || "";
+  if (!authHeader.startsWith("Bearer ")) {
+    const error = new Error("Kein gültiger Authorization Header vorhanden");
+    error.status = 401;
     throw error;
   }
-  return jwt.verify(token, secret);
+
+  const token = authHeader.replace("Bearer ", "").trim();
+  if (!token) {
+    const error = new Error("Kein Token übermittelt");
+    error.status = 401;
+    throw error;
+  }
+
+  const decoded = jwt.verify(token, getJwtSecret());
+  if (!decoded || !decoded.id) {
+    const error = new Error("Token ungültig oder unvollständig");
+    error.status = 401;
+    throw error;
+  }
+
+  const userDoc = await User.findById(decoded.id).select("-password");
+  if (!userDoc) {
+    const error = new Error("Benutzer wurde nicht gefunden");
+    error.status = 401;
+    throw error;
+  }
+
+  const safeUser = buildSafeUser(userDoc);
+  req.user = safeUser;
+  req.userDoc = userDoc;
 }
 
 async function auth(req, res, next) {
   try {
-    const header = req.header("Authorization");
-    if (!header) {
-      return res.status(401).json(createErrorResponse("AUTH_TOKEN_MISSING"));
-    }
-    const token = header.replace("Bearer ", "");
-    const decoded = verifyJwt(token);
-    await attachUser(req, decoded);
+    await verifyRequestUser(req);
     next();
   } catch (err) {
-    if (err.message?.includes("JWT_SECRET")) {
-      return res.status(500).json(createErrorResponse("INTERNAL_ERROR", err.message));
-    }
-    if (err.name === "TokenExpiredError") {
-      return res.status(401).json(createErrorResponse("AUTH_TOKEN_EXPIRED"));
-    }
-    if (err.status) {
-      return res.status(err.status).json(createErrorResponse("AUTH_TOKEN_INVALID", err.message));
-    }
-    next(err);
+    console.error("[AUTH] Fehler bei der Token-Verarbeitung:", err);
+    const status = err.status || (err.name === "TokenExpiredError" ? 401 : 401);
+    return res.status(status).json({
+      success: false,
+      message: err.message || "Authentifizierung fehlgeschlagen"
+    });
   }
 }
 
 async function optionalAuth(req, res, next) {
   try {
-    const header = req.header("Authorization");
-    if (header) {
-      const token = header.replace("Bearer ", "");
-      const decoded = verifyJwt(token);
-      await attachUser(req, decoded);
+    const authHeader = req.headers.authorization || "";
+    if (authHeader.startsWith("Bearer ")) {
+      await verifyRequestUser(req);
     }
   } catch (err) {
-    if (err.message?.includes("JWT_SECRET")) {
-      console.error(err.message);
-    }
-    // optional auth should not block request
+    console.warn("[AUTH][optional] Token konnte nicht verifiziert werden:", err.message);
   } finally {
     next();
   }
 }
 
 module.exports = auth;
+module.exports.auth = auth;
+module.exports.attachUser = auth;
 module.exports.optionalAuth = optionalAuth;

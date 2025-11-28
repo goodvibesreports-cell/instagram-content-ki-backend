@@ -47,6 +47,27 @@ function formatAuthResponse(payload, message) {
   return response;
 }
 
+function sanitizeUserPayload(user) {
+  if (!user) return null;
+  const source = user.toObject ? user.toObject({ virtuals: true }) : { ...user };
+  const id = source._id?.toString?.() ?? source.id;
+  const credits = source.credits || 0;
+  const bonusCredits = source.bonusCredits || 0;
+  const totalCredits =
+    typeof source.totalCredits === "number" ? source.totalCredits : credits + bonusCredits;
+  return {
+    id,
+    email: source.email,
+    verified: Boolean(source.verified),
+    platformMode: source.platformMode || "tiktok",
+    credits,
+    bonusCredits,
+    totalCredits,
+    settings: source.settings || {},
+    creatorProfile: source.creatorProfile || {}
+  };
+}
+
 async function register(req, res, next) {
   try {
     const payload = await registerUser(req.validated, getSessionMeta(req));
@@ -99,11 +120,20 @@ async function login(req, res, next) {
 
 async function me(req, res, next) {
   try {
-    const user = await getCurrentUser(req.user.id);
-    res.json({
-      success: true,
-      user
-    });
+    const baseUser =
+      req.userDoc ||
+      req.user ||
+      (req.user?.id ? await getCurrentUser(req.user.id) : null);
+
+    if (!baseUser) {
+      return res.status(401).json({
+        success: false,
+        message: "Nicht eingeloggt"
+      });
+    }
+
+    const user = sanitizeUserPayload(baseUser);
+    res.json({ success: true, user });
   } catch (err) {
     next(err);
   }
