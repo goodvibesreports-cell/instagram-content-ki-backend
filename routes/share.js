@@ -1,5 +1,5 @@
 const express = require("express");
-const auth = require("../middleware/auth.js");
+const auth = require("../middleware/auth");
 const { createShareLink, getSharePayload } = require("../services/shareService.js");
 const { createErrorResponse, createSuccessResponse } = require("../utils/errorHandler.js");
 

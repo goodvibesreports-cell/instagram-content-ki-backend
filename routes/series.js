@@ -1,5 +1,5 @@
 const express = require("express");
-const auth = require("../middleware/auth.js");
+const auth = require("../middleware/auth");
 const { validate, seriesSchema, episodeStatusSchema, performanceSchema } = require("../validators/schemas.js");
 const {
   listSeries,

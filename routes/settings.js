@@ -1,5 +1,5 @@
 const express = require("express");
-const auth = require("../middleware/auth.js");
+const auth = require("../middleware/auth");
 const { createSuccessResponse, createErrorResponse } = require("../utils/errorHandler.js");
 const { logger } = require("../utils/logger.js");
 const User = require("../models/User");

@@ -6,7 +6,7 @@ const analyzeUnifiedItems = require("../utils/unifiedAnalyzer.js");
 const analyzeContent = require("../utils/contentAnalyzer.js");
 const { analyzeTikTokVideos } = require("../utils/tiktokAnalyzer.js");
 const safeTikTokStreamParser = require("../utils/safeTikTokStreamParser.js");
-const { optionalAuth } = require("../middleware/auth.js");
+const auth = require("../middleware/auth");
 const UploadDataset = require("../models/UploadDataset.js");
 
 const router = express.Router();
@@ -310,7 +310,7 @@ function buildSuccessResponse(datasetId, aggregate, items, perPlatform) {
   };
 }
 
-router.post("/", optionalAuth, upload.single("file"), async (req, res) => {
+router.post("/", auth, upload.single("file"), async (req, res) => {
   console.log("[UPLOAD] Single file upload gestartet");
   try {
     if (!req.file) {
@@ -368,7 +368,7 @@ router.post("/", optionalAuth, upload.single("file"), async (req, res) => {
   }
 });
 
-router.post("/folder", optionalAuth, upload.array("files"), async (req, res) => {
+router.post("/folder", auth, upload.array("files"), async (req, res) => {
   console.log("[UPLOAD] Folder upload gestartet");
   try {
     const files = req.files || [];
@@ -423,7 +423,7 @@ router.post("/folder", optionalAuth, upload.array("files"), async (req, res) => 
   }
 });
 
-router.get("/datasets", optionalAuth, async (req, res) => {
+router.get("/datasets", auth, async (req, res) => {
   try {
     if (!req.user?.id) {
       return res.status(401).json({ success: false, message: "Login erforderlich" });
@@ -444,7 +444,7 @@ router.get("/datasets", optionalAuth, async (req, res) => {
   }
 });
 
-router.get("/datasets/:id", optionalAuth, async (req, res) => {
+router.get("/datasets/:id", auth, async (req, res) => {
   try {
     if (!req.user?.id) {
       return res.status(401).json({ success: false, message: "Login erforderlich" });
@@ -471,7 +471,7 @@ router.get("/datasets/:id", optionalAuth, async (req, res) => {
 
 const SUPPORTED_ANALYSIS_PLATFORMS = ["tiktok", "instagram", "facebook"];
 
-router.get("/analysis/unified/:datasetId", optionalAuth, async (req, res) => {
+router.get("/analysis/unified/:datasetId", auth, async (req, res) => {
   try {
     if (!req.user?.id) {
       return res.status(401).json({ success: false, message: "Login erforderlich" });
@@ -505,7 +505,7 @@ router.get("/analysis/unified/:datasetId", optionalAuth, async (req, res) => {
   }
 });
 
-router.get("/analysis/:platform", optionalAuth, async (req, res) => {
+router.get("/analysis/:platform", auth, async (req, res) => {
   try {
     if (!req.user?.id) {
       return res.status(401).json({ success: false, message: "Login erforderlich" });

@@ -1,7 +1,5 @@
 const express = require("express");
-const authMiddleware = require("../middleware/auth.js");
-const auth = authMiddleware;
-const optionalAuth = authMiddleware.optionalAuth;
+const auth = require("../middleware/auth");
 const { dynamicLimiter } = require("../middleware/rateLimiter.js");
 const { validate } = require("../validators/schemas.js");
 const {
@@ -54,7 +52,7 @@ async function checkCredits(userId, type) {
 // ==============================
 // Hook Generator
 // ==============================
-router.post("/hooks", optionalAuth, dynamicLimiter, validate(generateHooksSchema), async (req, res) => {
+router.post("/hooks", auth, dynamicLimiter, validate(generateHooksSchema), async (req, res) => {
   try {
     const { topic, count, style } = req.validatedBody;
     
@@ -103,7 +101,7 @@ router.post("/hooks", optionalAuth, dynamicLimiter, validate(generateHooksSchema
 // ==============================
 // Caption Generator
 // ==============================
-router.post("/captions", optionalAuth, dynamicLimiter, validate(generateCaptionsSchema), async (req, res) => {
+router.post("/captions", auth, dynamicLimiter, validate(generateCaptionsSchema), async (req, res) => {
   try {
     const { topic, tone, includeEmojis, includeHashtags, count } = req.validatedBody;
     
@@ -144,7 +142,7 @@ router.post("/captions", optionalAuth, dynamicLimiter, validate(generateCaptions
 // ==============================
 // Title Generator
 // ==============================
-router.post("/titles", optionalAuth, dynamicLimiter, validate(generateTitleSchema), async (req, res) => {
+router.post("/titles", auth, dynamicLimiter, validate(generateTitleSchema), async (req, res) => {
   try {
     const { topic, style, count } = req.validatedBody;
     
@@ -175,7 +173,7 @@ router.post("/titles", optionalAuth, dynamicLimiter, validate(generateTitleSchem
 // ==============================
 // Trend Analysis
 // ==============================
-router.post("/trends", optionalAuth, dynamicLimiter, validate(trendAnalysisSchema), async (req, res) => {
+router.post("/trends", auth, dynamicLimiter, validate(trendAnalysisSchema), async (req, res) => {
   try {
     const { niche, platform, timeframe } = req.validatedBody;
     
@@ -217,7 +215,7 @@ router.post("/trends", optionalAuth, dynamicLimiter, validate(trendAnalysisSchem
 // ==============================
 // Virality Analysis
 // ==============================
-router.post("/virality", optionalAuth, dynamicLimiter, validate(viralityAnalysisSchema), async (req, res) => {
+router.post("/virality", auth, dynamicLimiter, validate(viralityAnalysisSchema), async (req, res) => {
   try {
     const { content, type } = req.validatedBody;
     
@@ -248,7 +246,7 @@ router.post("/virality", optionalAuth, dynamicLimiter, validate(viralityAnalysis
 // ==============================
 // TikTok Insights Summary
 // ==============================
-router.post("/summary", optionalAuth, dynamicLimiter, validate(insightSummarySchema), async (req, res) => {
+router.post("/summary", auth, dynamicLimiter, validate(insightSummarySchema), async (req, res) => {
   try {
     const creditCheck = await checkCredits(req.user?.id, "insight");
     if (!creditCheck.allowed) {

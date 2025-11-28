@@ -1,11 +1,11 @@
 const express = require("express");
-const { optionalAuth } = require("../middleware/auth.js");
+const auth = require("../middleware/auth");
 const { generateInsightsPdf, generateInsightsCsv } = require("../services/exportService.js");
 const { createErrorResponse } = require("../utils/errorHandler.js");
 
 const router = express.Router();
 
-router.post("/pdf", optionalAuth, async (req, res) => {
+router.post("/pdf", auth, async (req, res) => {
   try {
     const buffer = await generateInsightsPdf(req.body || {});
     res.setHeader("Content-Type", "application/pdf");
@@ -17,7 +17,7 @@ router.post("/pdf", optionalAuth, async (req, res) => {
   }
 });
 
-router.post("/csv", optionalAuth, async (req, res) => {
+router.post("/csv", auth, async (req, res) => {
   try {
     const buffer = generateInsightsCsv(req.body?.posts || []);
     res.setHeader("Content-Type", "text/csv");
