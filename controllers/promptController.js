@@ -9,7 +9,7 @@ async function generatePrompt(req, res) {
   try {
     const data = req.body || {};
     if (!Object.keys(data).length) {
-      return res.status(400).json({ error: "Keine Daten übergeben" });
+      return res.status(400).json({ success: false, message: "Keine Daten übergeben" });
     }
 
     const response = await client.chat.completions.create({
@@ -22,10 +22,10 @@ async function generatePrompt(req, res) {
     });
 
     const prompts = response.choices?.map((choice) => choice.message?.content).filter(Boolean) || [];
-    return res.json({ prompts });
+    return res.json({ success: true, prompts });
   } catch (err) {
     console.error("Prompt generation error:", err);
-    return res.status(500).json({ error: "Fehler bei der Prompt-Generierung" });
+    return res.status(500).json({ success: false, message: "Fehler bei der Prompt-Generierung" });
   }
 }
 

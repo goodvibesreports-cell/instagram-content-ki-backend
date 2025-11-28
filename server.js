@@ -3,6 +3,10 @@ const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 
 require("./models/User");
+require("./models/CreatorProfile");
+require("./models/Organization");
+require("./models/History");
+require("./models/Credits");
 require("./models/UploadDataset");
 
 const uploadRoutes = require("./routes/upload.js");
