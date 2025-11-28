@@ -22,10 +22,35 @@ function getSessionMeta(req) {
   };
 }
 
+function formatAuthResponse(payload, message) {
+  const response = {
+    success: true,
+    ...(message ? { message } : {})
+  };
+  if (payload?.user) {
+    response.user = {
+      id: payload.user.id,
+      email: payload.user.email
+    };
+  }
+  if (payload?.tokens) {
+    response.tokens = {
+      accessToken: payload.tokens.accessToken,
+      refreshToken: payload.tokens.refreshToken,
+      expiresIn: payload.tokens.expiresIn,
+      refreshExpiresAt: payload.tokens.refreshExpiresAt
+    };
+  }
+  if (payload?.session) {
+    response.session = payload.session;
+  }
+  return response;
+}
+
 async function register(req, res, next) {
   try {
     const payload = await registerUser(req.validated, getSessionMeta(req));
-    res.status(201).json(createSuccessResponse(payload, "Registrierung erfolgreich!"));
+    res.status(201).json(formatAuthResponse(payload, "Registrierung erfolgreich!"));
   } catch (err) {
     next(err);
   }
@@ -48,7 +73,7 @@ async function registerTestAccount(req, res, next) {
       credits: req.validated.credits ?? 10000
     }, getSessionMeta(req));
 
-    res.status(201).json(createSuccessResponse(payload, "Testaccount bereitgestellt"));
+    res.status(201).json(formatAuthResponse(payload, "Testaccount bereitgestellt"));
   } catch (err) {
     next(err);
   }
@@ -66,7 +91,7 @@ async function verify(req, res, next) {
 async function login(req, res, next) {
   try {
     const payload = await loginUser(req.validated, getSessionMeta(req));
-    res.json(createSuccessResponse(payload, "Login erfolgreich!"));
+    res.json(formatAuthResponse(payload, "Login erfolgreich!"));
   } catch (err) {
     next(err);
   }
@@ -75,7 +100,10 @@ async function login(req, res, next) {
 async function me(req, res, next) {
   try {
     const user = await getCurrentUser(req.user.id);
-    res.json(createSuccessResponse(user));
+    res.json({
+      success: true,
+      user
+    });
   } catch (err) {
     next(err);
   }
@@ -102,7 +130,7 @@ async function changePassword(req, res, next) {
 async function refreshSession(req, res, next) {
   try {
     const payload = await refreshAuthSession(req.validated.refreshToken, getSessionMeta(req));
-    res.json(createSuccessResponse(payload, "Session aktualisiert"));
+    res.json(formatAuthResponse(payload, "Session aktualisiert"));
   } catch (err) {
     next(err);
   }
