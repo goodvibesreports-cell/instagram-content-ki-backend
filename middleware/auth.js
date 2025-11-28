@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const User = require("../models/User.js");
+const User = require("../models/User");
 const { createErrorResponse } = require("../utils/errorHandler.js");
 
 async function attachUser(req, decoded) {
