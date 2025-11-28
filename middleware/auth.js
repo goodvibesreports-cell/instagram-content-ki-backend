@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
-function getJwtSecret() {
+function ensureJwtSecret() {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
     throw new Error("JWT_SECRET ist nicht gesetzt");
@@ -12,57 +12,56 @@ function getJwtSecret() {
 function buildSafeUser(userDoc) {
   if (!userDoc) return null;
   const plain = userDoc.toObject ? userDoc.toObject({ virtuals: true }) : { ...userDoc };
+  const credits = plain.credits || 0;
+  const bonusCredits = plain.bonusCredits || 0;
+  if (typeof plain.totalCredits !== "number") {
+    plain.totalCredits = credits + bonusCredits;
+  }
   plain.id = plain._id?.toString?.() ?? plain.id;
-  const totalCredits =
-    typeof plain.totalCredits === "number"
-      ? plain.totalCredits
-      : (plain.credits || 0) + (plain.bonusCredits || 0);
-  plain.totalCredits = totalCredits;
   return plain;
 }
 
-async function verifyRequestUser(req) {
-  const authHeader = req.headers.authorization || "";
-  if (!authHeader.startsWith("Bearer ")) {
-    const error = new Error("Kein gültiger Authorization Header vorhanden");
-    error.status = 401;
-    throw error;
-  }
-
-  const token = authHeader.replace("Bearer ", "").trim();
-  if (!token) {
-    const error = new Error("Kein Token übermittelt");
-    error.status = 401;
-    throw error;
-  }
-
-  const decoded = jwt.verify(token, getJwtSecret());
-  if (!decoded || !decoded.id) {
-    const error = new Error("Token ungültig oder unvollständig");
-    error.status = 401;
-    throw error;
-  }
-
-  const userDoc = await User.findById(decoded.id).select("-password");
-  if (!userDoc) {
-    const error = new Error("Benutzer wurde nicht gefunden");
-    error.status = 401;
-    throw error;
-  }
-
-  const safeUser = buildSafeUser(userDoc);
-  req.user = safeUser;
-  req.userDoc = userDoc;
-}
-
-async function auth(req, res, next) {
+async function attachUser(req, res, next) {
   try {
-    await verifyRequestUser(req);
+    const authHeader = req.headers.authorization || "";
+    if (!authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        message: "Kein gültiger Authorization Header vorhanden"
+      });
+    }
+
+    const token = authHeader.replace("Bearer ", "").trim();
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: "Kein Token übermittelt"
+      });
+    }
+
+    const decoded = jwt.verify(token, ensureJwtSecret());
+    if (!decoded || !decoded.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Token ungültig oder unvollständig"
+      });
+    }
+
+    const userDoc = await User.findById(decoded.id).select("-password");
+    if (!userDoc) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token user"
+      });
+    }
+
+    req.userDoc = userDoc;
+    req.user = buildSafeUser(userDoc);
     next();
   } catch (err) {
     console.error("[AUTH] Fehler bei der Token-Verarbeitung:", err);
     const status = err.status || (err.name === "TokenExpiredError" ? 401 : 401);
-    return res.status(status).json({
+    res.status(status).json({
       success: false,
       message: err.message || "Authentifizierung fehlgeschlagen"
     });
@@ -73,16 +72,15 @@ async function optionalAuth(req, res, next) {
   try {
     const authHeader = req.headers.authorization || "";
     if (authHeader.startsWith("Bearer ")) {
-      await verifyRequestUser(req);
+      await attachUser(req, res, next);
+      return;
     }
   } catch (err) {
-    console.warn("[AUTH][optional] Token konnte nicht verifiziert werden:", err.message);
-  } finally {
-    next();
+    console.warn("[AUTH][optional]", err.message);
   }
+  next();
 }
 
-module.exports = auth;
-module.exports.auth = auth;
-module.exports.attachUser = auth;
+module.exports = attachUser;
+module.exports.auth = attachUser;
 module.exports.optionalAuth = optionalAuth;
