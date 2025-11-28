@@ -83,6 +83,18 @@ const SECTION_DEFINITIONS = [{
   arrayKey: "VideoList",
   type: "posted"
 }];
+const FOLLOWER_SECTIONS = [{
+  path: ["Followers", "Fans List"],
+  arrayKey: "FansList"
+}, {
+  path: ["Follower", "Fans List"],
+  arrayKey: "FansList"
+}, {
+  path: ["Followers", "FansList"]
+}, {
+  path: ["Followers", "Fans"],
+  arrayKey: "Fans"
+}];
 const FALLBACK_ARRAY_KEYS = ["VideoList", "ItemFavoriteList", "FavoriteVideoList", "List", "items"];
 const LIKES_KEYS = ["Likes", "Like Count", "LikeCount", "LikesCount", "Like", "Favorite"];
 const TITLE_KEYS = ["Title", "Text", "Caption", "Description"];
@@ -90,6 +102,10 @@ const SOUND_KEYS = ["Sound", "Audio Name", "SoundName"];
 const LOCATION_KEYS = ["Location", "ShootLocation"];
 const COVER_KEYS = ["CoverImage", "Cover", "Thumbnail", "VideoCover", "Cover Url"];
 const DATE_FIELDS = ["Date", "Create Time", "CreationTime", "CreateTime", "Timestamp", "time", "Time", "DateCreated"];
+const FOLLOWER_NAME_KEYS = ["Nickname", "NickName", "Username", "User Name", "DisplayName", "Name"];
+const FOLLOWER_ID_KEYS = ["UserId", "User ID", "userid", "user_id"];
+const FOLLOWER_AVATAR_KEYS = ["Avatar", "Profile Photo", "ProfilePhoto", "Photo"];
+const FOLLOWER_DATE_KEYS = ["Date", "DateAdded", "Follow Time", "Time", "Create Time"];
 function normalizeNumber(value) {
   if (value === null || value === undefined) return 0;
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -188,7 +204,22 @@ function buildVideo(item = {}, ctx = {}) {
     location: locationValue || "Unbekannt",
     coverImage: coverImage || null,
     sourceSection: ctx.sourceSection || "unknown",
+    originType: ctx.type || "posted",
     isDeleted: Boolean(ctx.isDeleted)
+  };
+}
+function normalizeFollowerEntry(entry = {}) {
+  const dateValue = extractField(entry, FOLLOWER_DATE_KEYS);
+  const dateObj = normalizeDate(dateValue);
+  if (!dateObj) {
+    return null;
+  }
+  return {
+    username: sanitizeText(extractField(entry, FOLLOWER_NAME_KEYS) || entry.User || entry.NickName || "Follower"),
+    userId: sanitizeText(extractField(entry, FOLLOWER_ID_KEYS) || entry.UserName || entry.Id),
+    avatar: sanitizeAssetUrl(extractField(entry, FOLLOWER_AVATAR_KEYS)),
+    date: dateObj.toISOString(),
+    timestamp: dateObj.getTime()
   };
 }
 function addIgnored(ignoredMap, totals, reason, example) {
@@ -243,6 +274,7 @@ function extractVideoLinksFromAnyObject(node, currentPath = [], results = [], se
 }
 function parseTikTokExport(json, sourceFileName = "unknown") {
   const videos = [];
+  const followerEvents = [];
   const ignoredMap = new Map();
   const seenKeys = new Set();
   const totals = {
@@ -307,6 +339,18 @@ function parseTikTokExport(json, sourceFileName = "unknown") {
       });
     });
   });
+  FOLLOWER_SECTIONS.forEach(section => {
+    const list = extractList(json, section.path, section.arrayKey);
+    if (!Array.isArray(list)) return;
+    list.forEach((entry, idx) => {
+      const normalizedFollower = normalizeFollowerEntry(entry);
+      if (normalizedFollower) {
+        followerEvents.push(normalizedFollower);
+      } else {
+        addIgnored(ignoredMap, totals, "invalid_follower_entry", `${section.path.join(".")}#${idx}`);
+      }
+    });
+  });
   totals.videos = videos.length;
   const rawSnippet = (() => {
     try {
@@ -320,6 +364,7 @@ function parseTikTokExport(json, sourceFileName = "unknown") {
     sourceType: primarySource || "auto-detected",
     rawJsonSnippet: rawSnippet,
     videos,
+    followers: followerEvents,
     ignoredEntries: [...ignoredMap.values()],
     totals
   };

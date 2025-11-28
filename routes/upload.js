@@ -75,6 +75,7 @@ function sanitizeItems(items = [], fallbackPlatform = "unknown") {
     const timestamp = isoDate ? new Date(isoDate).getTime() : Number(item.timestamp) || null;
     const meta = { ...(item.meta || {}) };
     if (meta.raw) delete meta.raw;
+    const sound = item.sound || item.soundOrAudio || meta.sound || "";
     return {
       id: item.id || item.link || `item-${index}`,
       platform: (item.platform || fallbackPlatform || "unknown").toLowerCase(),
@@ -86,6 +87,8 @@ function sanitizeItems(items = [], fallbackPlatform = "unknown") {
       shares: Number.isFinite(item.shares) ? item.shares : Number(item.shares) || 0,
       views: Number.isFinite(item.views) ? item.views : Number(item.views) || 0,
       caption: item.caption || item.title || "",
+      title: item.title || item.caption || "",
+      sound,
       soundOrAudio: item.sound || item.soundOrAudio || "",
       location: item.location || "",
       coverImage: item.coverImage || null,
@@ -94,6 +97,24 @@ function sanitizeItems(items = [], fallbackPlatform = "unknown") {
       meta
     };
   });
+}
+
+function sanitizeFollowers(entries = []) {
+  return entries
+    .map((entry) => {
+      const isoDate = toIsoDate(entry.date || entry.timestamp);
+      if (!isoDate) return null;
+      const timestamp = new Date(isoDate).getTime();
+      if (!timestamp || Number.isNaN(timestamp)) return null;
+      return {
+        username: entry.username || entry.name || "Follower",
+        userId: entry.userId || entry.id || null,
+        avatar: entry.avatar || null,
+        date: isoDate,
+        timestamp
+      };
+    })
+    .filter(Boolean);
 }
 
 function buildPerPlatformSummary(items = []) {
@@ -314,7 +335,7 @@ async function parseFolderWithSafeTikTok(files = []) {
   return aggregate;
 }
 
-async function persistDataset({ sanitizedItems, aggregate, userId, sourceInfo, analysis }) {
+async function persistDataset({ sanitizedItems, sanitizedFollowers, aggregate, userId, sourceInfo, analysis }) {
   const dataset = await UploadDataset.create({
     userId: userId || null,
     platform: aggregate.primaryPlatform || "unknown",
@@ -336,7 +357,11 @@ async function persistDataset({ sanitizedItems, aggregate, userId, sourceInfo, a
       analysis,
       perPlatform: buildPerPlatformSummary(sanitizedItems),
       summary: aggregate.summary,
-      flags: aggregate.flags
+      flags: aggregate.flags,
+      followers: {
+        total: sanitizedFollowers.length,
+        events: sanitizedFollowers
+      }
     }
   });
   return dataset;
@@ -377,8 +402,9 @@ router.post("/", auth, upload.single("file"), async (req, res) => {
       aggregate = processUploadBuffer([req.file], { platformHint, sourceType: "upload-single" });
     }
     const sanitizedItems = sanitizeItems(aggregate.items || [], aggregate.primaryPlatform);
+    const sanitizedFollowers = sanitizeFollowers(aggregate.followers || []);
     const perPlatform = buildPerPlatformSummary(sanitizedItems);
-    const analysis = analyzeUnifiedItems(sanitizedItems);
+    const analysis = analyzeUnifiedItems(sanitizedItems, sanitizedFollowers);
 
     console.log(
       `[UPLOAD] Plattform erkannt: ${aggregate.primaryPlatform} – ${sanitizedItems.length} Items · Ignored: ${
@@ -395,7 +421,8 @@ router.post("/", auth, upload.single("file"), async (req, res) => {
         fileSize: req.file.size,
         sourceType: "upload-single"
       },
-      analysis
+      analysis,
+      sanitizedFollowers
     });
 
     const responsePayload = buildSuccessResponse(dataset?._id, aggregate, sanitizedItems, perPlatform);
@@ -433,8 +460,9 @@ router.post("/folder", auth, upload.array("files"), async (req, res) => {
       aggregate = processUploadBuffer(files, { platformHint, sourceType: "upload-folder" });
     }
     const sanitizedItems = sanitizeItems(aggregate.items || [], aggregate.primaryPlatform);
+    const sanitizedFollowers = sanitizeFollowers(aggregate.followers || []);
     const perPlatform = buildPerPlatformSummary(sanitizedItems);
-    const analysis = analyzeUnifiedItems(sanitizedItems);
+    const analysis = analyzeUnifiedItems(sanitizedItems, sanitizedFollowers);
     const totalSize = files.reduce((sum, file) => sum + (file.size || 0), 0);
 
     console.log(
@@ -450,7 +478,8 @@ router.post("/folder", auth, upload.array("files"), async (req, res) => {
         fileSize: totalSize,
         sourceType: "upload-folder"
       },
-      analysis
+      analysis,
+      sanitizedFollowers
     });
 
     const responsePayload = buildSuccessResponse(dataset?._id, aggregate, sanitizedItems, perPlatform);
@@ -531,8 +560,10 @@ router.get("/analysis/unified/:datasetId", auth, async (req, res) => {
 
     const range = parseDateRange(req.query || {});
     const items = Array.isArray(dataset.videos) ? dataset.videos : [];
+    const followers = Array.isArray(dataset.metadata?.followers?.events) ? dataset.metadata.followers.events : [];
     const scopedItems = filterItemsByDate(items, range);
-    const analysis = analyzeUnifiedItems(scopedItems);
+    const scopedFollowers = filterItemsByDate(followers, range);
+    const analysis = analyzeUnifiedItems(scopedItems, scopedFollowers);
     return res.json({
       success: true,
       datasetId: dataset._id,

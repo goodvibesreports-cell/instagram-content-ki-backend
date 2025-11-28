@@ -35,7 +35,7 @@ const CONTENT_HINTS = {
   youtube: [/youtube\.com\/watch/, /"snippet"/, /"uploads"/]
 };
 const WATCH_HISTORY_PATTERNS = [/watch ?history/i, /liked[_ ]videos/i, /recently ?deleted/i, /likes? ?list/i];
-const SNIPPET_CHAR_LIMIT = 600;
+const SNIPPET_CHAR_LIMIT = 400;
 function toInternalFile(file = {}) {
   if (!file || !file.buffer) {
     throw new Error("Invalid file buffer");
@@ -119,7 +119,11 @@ function normalizeItem(entry = {}, platform = "unknown", fileName = "") {
       ...entry,
       platform: (entry.platform || platform).toLowerCase(),
       date: entry.date,
-      timestamp: ensureTimestamp(entry.timestamp || entry.date)
+      timestamp: ensureTimestamp(entry.timestamp || entry.date),
+      meta: {
+        ...(entry.meta || {}),
+        sourceFile: entry.sourceFile || fileName
+      }
     };
   } else {
     normalized = (0, _normalizedPost.createNormalizedPost)({
@@ -144,7 +148,8 @@ function normalizeItem(entry = {}, platform = "unknown", fileName = "") {
   normalized.hashtags = normalizeHashtagList(entry.hashtags || normalized.hashtags, baseCaption);
   const meta = {
     ...(normalized.meta || {}),
-    sourceFile: normalized.meta?.sourceFile || entry.sourceFile || fileName
+    sourceFile: normalized.meta?.sourceFile || entry.sourceFile || fileName,
+    originType: normalized.meta?.originType || entry.originType || entry.meta?.originType || "posted"
   };
   if (meta.raw) {
     delete meta.raw;
@@ -209,12 +214,16 @@ function filterRelevantData(payload, platform, fileName = "", options = {}) {
   const flags = {};
   const rawSnippet = buildSnippet(payload);
   const normalizedItems = [];
+  const followerEvents = [];
   switch (platform) {
     case "tiktok":
       {
         if (typeof payload !== "object") break;
         const parsed = (0, _tiktokParser.parseTikTokExport)(payload, fileName);
         flags.hasWatchHistory = (parsed.totals?.watchHistory || 0) > 0;
+        if (Array.isArray(parsed.followers)) {
+          followerEvents.push(...parsed.followers);
+        }
         parsed.videos.map(video => (0, _normalizedPost.normalizedFromTikTokVideo)({
           ...video,
           sourceFile: fileName
@@ -279,6 +288,15 @@ function filterRelevantData(payload, platform, fileName = "", options = {}) {
   normalizedItems.forEach(item => {
     const enriched = normalizeItem(item, platform, fileName);
     if (!enriched) return;
+    const originType = enriched.meta?.originType || "posted";
+    if (originType !== "posted") {
+      ignored.push({
+        reason: originType === "deleted" ? "deleted_posts" : "non_post_section",
+        file: fileName,
+        id: enriched.id
+      });
+      return;
+    }
     if (shouldIgnoreNormalizedItem(enriched)) {
       ignored.push({
         reason: "non_post_entry",
@@ -291,6 +309,7 @@ function filterRelevantData(payload, platform, fileName = "", options = {}) {
   });
   return {
     items: filteredItems,
+    followers: followerEvents,
     ignored,
     rawSnippet,
     flags
@@ -325,6 +344,7 @@ function processUploadBuffer(files = [], {
       hasWatchHistory: false
     };
     const items = [];
+    const followers = [];
     const perPlatform = {};
     files.filter(Boolean).forEach(file => {
       try {
@@ -397,6 +417,7 @@ function processUploadBuffer(files = [], {
       const parsedPayload = isJsonLike && detectionPayload && typeof detectionPayload === "object" ? detectionPayload : textContent;
       const {
         items: normalizedItems,
+        followers: detectedFollowers = [],
         ignored,
         rawSnippet,
         flags: localFlags
@@ -423,6 +444,9 @@ function processUploadBuffer(files = [], {
         continue;
       }
       summary.processedFiles += 1;
+      if (detectedFollowers.length) {
+        followers.push(...detectedFollowers);
+      }
       normalizedItems.forEach(normalized => {
         items.push(normalized);
         const platformKey = normalized.platform || detection.platform;
@@ -436,6 +460,7 @@ function processUploadBuffer(files = [], {
     const primaryPlatform = Object.entries(platformCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || (platformHint && platformHint !== "unknown" ? platformHint : "unknown");
     return {
       items,
+      followers,
       perPlatform,
       ignoredEntries,
       rawFilesMeta,
@@ -452,6 +477,7 @@ function processUploadBuffer(files = [], {
     console.error("[UploadEngine] processing failed:", error);
     return {
       items: [],
+      followers: [],
       perPlatform: {},
       ignoredEntries: [{
         reason: "engine-error",
