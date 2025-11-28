@@ -21,7 +21,7 @@ var _CreatorProfile = _interopRequireDefault(require("../models/CreatorProfile.j
 var _emailService = require("./emailService.js");
 function _interopRequireDefault(e) { return e && e.__esModule ? e : { default: e }; }
 const ACCESS_TOKEN_TTL_SECONDS = Number(process.env.ACCESS_TOKEN_TTL_SECONDS || 3600);
-const REFRESH_TOKEN_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30);
+const REFRESH_TOKEN_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 7);
 const REFRESH_TOKEN_TTL_MS = REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000;
 const MAX_SESSIONS_PER_USER = Number(process.env.AUTH_SESSION_LIMIT || 10);
 const MAX_FAILED_ATTEMPTS = Number(process.env.AUTH_MAX_FAILED_ATTEMPTS || 5);
