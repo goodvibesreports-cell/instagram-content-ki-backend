@@ -1,9 +1,5 @@
 "use strict";
 
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = analyzeUnifiedItems;
 const WEEKDAY_LABELS = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
 function getDateParts(item) {
   if (!item) return null;
@@ -154,3 +150,4 @@ function analyzeUnifiedItems(items = []) {
   };
 }
 
+module.exports = analyzeUnifiedItems;
