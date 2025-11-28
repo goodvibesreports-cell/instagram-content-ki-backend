@@ -27,7 +27,7 @@ function missingAuthResponse(res, message) {
   });
 }
 
-async function auth(req, res, next) {
+async function attachUser(req, res, next) {
   try {
     const authHeader = req.headers.authorization || "";
     if (!authHeader.startsWith("Bearer ")) {
@@ -63,6 +63,7 @@ async function auth(req, res, next) {
     }
 
     req.userDoc = userDoc;
+    req.userRaw = userDoc;
     req.user = buildSafeUser(userDoc);
     next();
   } catch (err) {
@@ -94,6 +95,7 @@ async function optionalAuth(req, res, next) {
     const userDoc = await User.findById(decoded.id).select("-password");
     if (userDoc) {
       req.userDoc = userDoc;
+      req.userRaw = userDoc;
       req.user = buildSafeUser(userDoc);
     }
   } catch (err) {
@@ -102,5 +104,6 @@ async function optionalAuth(req, res, next) {
   next();
 }
 
-module.exports = auth;
+module.exports = attachUser;
+module.exports.attachUser = attachUser;
 module.exports.optionalAuth = optionalAuth;
