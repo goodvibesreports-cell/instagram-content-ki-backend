@@ -133,7 +133,7 @@ async function me(req, res, next) {
     }
 
     const user = sanitizeUserPayload(baseUser);
-    res.json({ success: true, user });
+    res.json(createSuccessResponse({ user }));
   } catch (err) {
     next(err);
   }

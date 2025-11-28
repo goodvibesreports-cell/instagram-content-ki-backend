@@ -9,8 +9,7 @@ function computeTotalCredits(user) {
   return credits + bonusCredits;
 }
 
-function buildProfilePayload(profileDoc, user, fallbackUserId) {
-  const totalCredits = computeTotalCredits(user);
+function normalizeProfileDoc(profileDoc, fallbackUserId) {
   if (!profileDoc) {
     return {
       userId: fallbackUserId,
@@ -21,38 +20,51 @@ function buildProfilePayload(profileDoc, user, fallbackUserId) {
       exampleHooks: [],
       exampleCaptions: [],
       bannedWords: [],
-      creatorStatement: "",
-      totalCredits,
-      usedCredits: 0
+      creatorStatement: ""
     };
   }
   const plain = profileDoc.toObject ? profileDoc.toObject() : { ...profileDoc };
-  plain.totalCredits =
-    typeof plain.totalCredits === "number" ? plain.totalCredits : totalCredits;
-  plain.usedCredits = plain.usedCredits || 0;
-  if (!plain.userId) {
-    plain.userId = fallbackUserId;
-  }
+  plain.userId = plain.userId || fallbackUserId;
   return plain;
+}
+
+function buildCreatorPayload(profileDoc, user, userId) {
+  const profile = normalizeProfileDoc(profileDoc, userId);
+  return {
+    totalCredits: computeTotalCredits(user),
+    usedCredits: profileDoc?.usedCredits || 0,
+    plan: profileDoc?.plan || user?.plan || "free",
+    tier: profileDoc?.tier || user?.tier || "basic",
+    limits: profileDoc?.limits || {},
+    profile
+  };
 }
 
 async function getProfile(req, res, next) {
   try {
-    const profile = await getCreatorProfile(req.user.id);
-    const payload = buildProfilePayload(profile, req.user || req.userDoc, req.user.id);
-    res.json(createSuccessResponse({ profile: payload }));
+    const profileDoc = await getCreatorProfile(req.user.id);
+    const payload = buildCreatorPayload(profileDoc, req.user || req.userDoc, req.user.id);
+    res.json(createSuccessResponse(payload));
   } catch (err) {
-    next(err);
+    console.error("[CREATOR] Fehler beim Laden des Profils:", err);
+    res.status(500).json({
+      success: false,
+      message: "Fehler beim Laden des Creator-Profils"
+    });
   }
 }
 
 async function upsertProfile(req, res, next) {
   try {
-    const profile = await saveCreatorProfile(req.user.id, req.validated);
-    const payload = buildProfilePayload(profile, req.user || req.userDoc, req.user.id);
-    res.json(createSuccessResponse({ profile: payload }, "Creator DNA gespeichert"));
+    const profileDoc = await saveCreatorProfile(req.user.id, req.validated);
+    const payload = buildCreatorPayload(profileDoc, req.user || req.userDoc, req.user.id);
+    res.json(createSuccessResponse(payload, "Creator DNA gespeichert"));
   } catch (err) {
-    next(err);
+    console.error("[CREATOR] Fehler beim Speichern des Profils:", err);
+    res.status(500).json({
+      success: false,
+      message: "Fehler beim Speichern des Creator-Profils"
+    });
   }
 }
 

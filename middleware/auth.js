@@ -14,37 +14,44 @@ function buildSafeUser(userDoc) {
   const plain = userDoc.toObject ? userDoc.toObject({ virtuals: true }) : { ...userDoc };
   const credits = plain.credits || 0;
   const bonusCredits = plain.bonusCredits || 0;
-  if (typeof plain.totalCredits !== "number") {
-    plain.totalCredits = credits + bonusCredits;
-  }
+  plain.totalCredits =
+    typeof plain.totalCredits === "number" ? plain.totalCredits : credits + bonusCredits;
   plain.id = plain._id?.toString?.() ?? plain.id;
   return plain;
 }
 
-async function attachUser(req, res, next) {
+function missingAuthResponse(res, message) {
+  return res.status(401).json({
+    success: false,
+    message: message || "Authentifizierung erforderlich"
+  });
+}
+
+async function auth(req, res, next) {
   try {
     const authHeader = req.headers.authorization || "";
     if (!authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({
-        success: false,
-        message: "Kein gültiger Authorization Header vorhanden"
-      });
+      return missingAuthResponse(res, "Kein gültiger Authorization Header vorhanden");
     }
 
     const token = authHeader.replace("Bearer ", "").trim();
     if (!token) {
-      return res.status(401).json({
+      return missingAuthResponse(res, "Kein Token übermittelt");
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, ensureJwtSecret());
+    } catch (err) {
+      const status = err.name === "TokenExpiredError" ? 401 : 401;
+      return res.status(status).json({
         success: false,
-        message: "Kein Token übermittelt"
+        message: err.message || "Token ungültig"
       });
     }
 
-    const decoded = jwt.verify(token, ensureJwtSecret());
     if (!decoded || !decoded.id) {
-      return res.status(401).json({
-        success: false,
-        message: "Token ungültig oder unvollständig"
-      });
+      return missingAuthResponse(res, "Token ungültig oder unvollständig");
     }
 
     const userDoc = await User.findById(decoded.id).select("-password");
@@ -60,10 +67,9 @@ async function attachUser(req, res, next) {
     next();
   } catch (err) {
     console.error("[AUTH] Fehler bei der Token-Verarbeitung:", err);
-    const status = err.status || (err.name === "TokenExpiredError" ? 401 : 401);
-    res.status(status).json({
+    res.status(500).json({
       success: false,
-      message: err.message || "Authentifizierung fehlgeschlagen"
+      message: "Authentifizierung fehlgeschlagen"
     });
   }
 }
@@ -71,9 +77,24 @@ async function attachUser(req, res, next) {
 async function optionalAuth(req, res, next) {
   try {
     const authHeader = req.headers.authorization || "";
-    if (authHeader.startsWith("Bearer ")) {
-      await attachUser(req, res, next);
-      return;
+    if (!authHeader.startsWith("Bearer ")) {
+      return next();
+    }
+
+    const token = authHeader.replace("Bearer ", "").trim();
+    if (!token) {
+      return next();
+    }
+
+    const decoded = jwt.verify(token, ensureJwtSecret());
+    if (!decoded?.id) {
+      return next();
+    }
+
+    const userDoc = await User.findById(decoded.id).select("-password");
+    if (userDoc) {
+      req.userDoc = userDoc;
+      req.user = buildSafeUser(userDoc);
     }
   } catch (err) {
     console.warn("[AUTH][optional]", err.message);
@@ -81,6 +102,5 @@ async function optionalAuth(req, res, next) {
   next();
 }
 
-module.exports = attachUser;
-module.exports.auth = attachUser;
+module.exports = auth;
 module.exports.optionalAuth = optionalAuth;
