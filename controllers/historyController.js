@@ -19,7 +19,8 @@ async function listHistory(req, res, next) {
       History.countDocuments(query)
     ]);
 
-    res.json(createSuccessResponse({
+    const payload = {
+      history: items,
       items,
       pagination: {
         page,
@@ -27,9 +28,22 @@ async function listHistory(req, res, next) {
         total,
         pages: Math.ceil(total / limit)
       }
-    }));
+    };
+    return res.json(createSuccessResponse(payload));
   } catch (err) {
-    next(err);
+    console.error("[HISTORY] Fehler beim Laden:", err);
+    return res.json({
+      success: false,
+      message: "Verlauf konnte nicht geladen werden",
+      history: [],
+      items: [],
+      pagination: {
+        page: req.validated?.page || 1,
+        limit: req.validated?.limit || 20,
+        total: 0,
+        pages: 0
+      }
+    });
   }
 }
 

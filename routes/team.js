@@ -20,7 +20,12 @@ router.get("/", auth, async (req, res) => {
     
     return res.json(createSuccessResponse({ organization: org }));
   } catch (err) {
-    return res.status(500).json(createErrorResponse("DATABASE_ERROR", err.message));
+    console.error("[TEAM] Fehler beim Laden des Teams:", err);
+    return res.json({
+      success: false,
+      message: "Team konnte nicht geladen werden",
+      data: { organization: null }
+    });
   }
 });
 

@@ -1,18 +1,45 @@
 const mongoose = require("mongoose");
 
+const sessionSchema = new mongoose.Schema(
+  {
+    sessionId: { type: String, required: true },
+    tokenHash: { type: String, required: true },
+    device: { type: String, default: "unknown" },
+    ip: { type: String, default: "" },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
+    lastUsedAt: { type: Date, default: Date.now },
+    expiresAt: { type: Date, required: true }
+  },
+  { _id: false }
+);
+
 const userSchema = new mongoose.Schema(
   {
     email: { type: String, required: true, unique: true, trim: true },
     password: { type: String, required: true },
     verified: { type: Boolean, default: false },
+    verificationToken: { type: String, default: null },
+    verificationTokenExpires: { type: Date, default: null },
     tier: { type: String, default: "basic" },
     credits: { type: Number, default: 1000 },
     bonusCredits: { type: Number, default: 0 },
     settings: { type: mongoose.Schema.Types.Mixed, default: {} },
     platformMode: { type: String, default: "tiktok" },
-    creatorProfile: { type: mongoose.Schema.Types.Mixed, default: {} },
+    creatorProfile: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CreatorProfile",
+      default: null
+    },
     organization: { type: mongoose.Schema.Types.ObjectId, ref: "Organization", default: null },
     organizationRole: { type: String, default: null },
+    sessions: { type: [sessionSchema], default: [] },
+    security: {
+      failedLoginAttempts: { type: Number, default: 0 },
+      lockedUntil: { type: Date, default: null },
+      lastLoginAt: { type: Date, default: null },
+      lastFailedLoginAt: { type: Date, default: null }
+    },
     usage: {
       analyses: { type: Number, default: 0 },
       prompts: { type: Number, default: 0 },

@@ -23,6 +23,7 @@ module.exports = async function auth(req, res, next) {
     }
 
     req.user = user;
+    req.userDoc = user;
     next();
   } catch (err) {
     console.error("AUTH ERROR:", err);

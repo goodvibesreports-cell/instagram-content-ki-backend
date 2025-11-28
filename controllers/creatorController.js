@@ -46,7 +46,7 @@ async function getProfile(req, res, next) {
     res.json(createSuccessResponse(payload));
   } catch (err) {
     console.error("[CREATOR] Fehler beim Laden des Profils:", err);
-    res.status(500).json({
+    res.json({
       success: false,
       message: "Fehler beim Laden des Creator-Profils"
     });
@@ -60,7 +60,7 @@ async function upsertProfile(req, res, next) {
     res.json(createSuccessResponse(payload, "Creator DNA gespeichert"));
   } catch (err) {
     console.error("[CREATOR] Fehler beim Speichern des Profils:", err);
-    res.status(500).json({
+    res.json({
       success: false,
       message: "Fehler beim Speichern des Creator-Profils"
     });

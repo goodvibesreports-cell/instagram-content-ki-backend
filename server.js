@@ -94,6 +94,14 @@ app.get("/", (req, res) => {
   res.send("CreatorOS Backend läuft 🚀");
 });
 
+app.get("/healthz", (req, res) => {
+  res.json({
+    status: "ok",
+    uptime: process.uptime(),
+    timestamp: Date.now()
+  });
+});
+
 app.use((err, req, res, next) => {
   console.error("❌ Unhandled error:", err);
   res.status(err.status || 500).json({
