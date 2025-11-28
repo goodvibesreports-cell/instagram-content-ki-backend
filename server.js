@@ -2,6 +2,9 @@ const express = require("express");
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 
+require("./models/User");
+require("./models/UploadDataset");
+
 const uploadRoutes = require("./routes/upload.js");
 const authRoutes = require("./routes/auth.js");
 const adminRoutes = require("./routes/admin.js");
@@ -55,13 +58,17 @@ app.use((req, res, next) => {
   next();
 });
 
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB verbunden"))
-  .catch((err) => {
+async function startDatabase() {
+  try {
+    await mongoose.connect(process.env.MONGO_URI);
+    console.log("✅ MongoDB verbunden");
+  } catch (err) {
     console.error("❌ Mongo Fehler:", err);
     process.exit(1);
-  });
+  }
+}
+
+startDatabase();
 
 app.use("/upload", uploadRoutes);
 app.use("/auth", authRoutes);
