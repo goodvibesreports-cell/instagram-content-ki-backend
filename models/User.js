@@ -4,11 +4,11 @@ const UserSchema = new mongoose.Schema(
   {
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
+    credits: { type: Number, default: 999 },
+    creatorProfile: { type: Object, default: {} },
     verified: { type: Boolean, default: false },
     platformMode: { type: String, default: "tiktok" },
-    creatorProfile: { type: Object, default: {} },
     settings: { type: Object, default: {} },
-    credits: { type: Number, default: 1000 },
     organization: { type: mongoose.Schema.Types.ObjectId, ref: "Organization", default: null }
   },
   { timestamps: true }

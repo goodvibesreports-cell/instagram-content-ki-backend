@@ -112,7 +112,11 @@ async function verify(req, res, next) {
 async function login(req, res, next) {
   try {
     const payload = await loginUser(req.validated, getSessionMeta(req));
-    res.json(formatAuthResponse(payload, "Login erfolgreich!"));
+    res.json({
+      success: true,
+      tokens: payload?.tokens || {},
+      user: payload?.user || null
+    });
   } catch (err) {
     next(err);
   }
@@ -120,33 +124,10 @@ async function login(req, res, next) {
 
 async function me(req, res, next) {
   try {
-    const baseUser =
-      req.userDoc ||
-      req.user ||
-      (req.user?.id ? await getCurrentUser(req.user.id) : null);
-
-    if (!baseUser) {
-      return res.status(401).json({
-        success: false,
-        message: "Nicht eingeloggt"
-      });
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     }
-
-    const user = sanitizeUserPayload(baseUser);
-    const accessToken =
-      req.authToken ||
-      (req.headers.authorization?.startsWith("Bearer ")
-        ? req.headers.authorization.replace("Bearer ", "").trim()
-        : null);
-
-    res.json({
-      success: true,
-      user,
-      tokens: {
-        accessToken,
-        refreshToken: null
-      }
-    });
+    res.json({ success: true, user: req.user });
   } catch (err) {
     next(err);
   }
