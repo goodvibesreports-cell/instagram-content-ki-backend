@@ -133,7 +133,20 @@ async function me(req, res, next) {
     }
 
     const user = sanitizeUserPayload(baseUser);
-    res.json(createSuccessResponse({ user }));
+    const accessToken =
+      req.authToken ||
+      (req.headers.authorization?.startsWith("Bearer ")
+        ? req.headers.authorization.replace("Bearer ", "").trim()
+        : null);
+
+    res.json({
+      success: true,
+      user,
+      tokens: {
+        accessToken,
+        refreshToken: null
+      }
+    });
   } catch (err) {
     next(err);
   }

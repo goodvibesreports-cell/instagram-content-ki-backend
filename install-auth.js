@@ -74,7 +74,7 @@ fs.writeFileSync(
 `const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const User = require("../models/User.js");
+const User = require("../models/User");
 const auth = require("../middleware/auth.js");
 
 const router = express.Router();

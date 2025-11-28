@@ -4,7 +4,7 @@ const { dynamicLimiter } = require("../middleware/rateLimiter.js");
 const { createSuccessResponse, createErrorResponse } = require("../utils/errorHandler.js");
 const { logger } = require("../utils/logger.js");
 const { cacheService } = require("../services/cacheService.js");
-const User = require("../models/User.js");
+const User = require("../models/User");
 const GeneratedContent = require("../models/GeneratedContent.js");
 const OpenAI = require("openai");
 

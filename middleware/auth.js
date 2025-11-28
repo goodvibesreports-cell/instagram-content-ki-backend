@@ -2,108 +2,69 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
 function ensureJwtSecret() {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
+  if (!process.env.JWT_SECRET) {
     throw new Error("JWT_SECRET ist nicht gesetzt");
   }
-  return secret;
+  return process.env.JWT_SECRET;
 }
 
-function buildSafeUser(userDoc) {
-  if (!userDoc) return null;
-  const plain = userDoc.toObject ? userDoc.toObject({ virtuals: true }) : { ...userDoc };
-  const credits = plain.credits || 0;
-  const bonusCredits = plain.bonusCredits || 0;
-  plain.totalCredits =
-    typeof plain.totalCredits === "number" ? plain.totalCredits : credits + bonusCredits;
-  plain.id = plain._id?.toString?.() ?? plain.id;
-  return plain;
+function extractBearerToken(header = "") {
+  if (!header.startsWith("Bearer ")) {
+    return null;
+  }
+  const token = header.replace("Bearer ", "").trim();
+  return token || null;
 }
 
-function missingAuthResponse(res, message) {
-  return res.status(401).json({
-    success: false,
-    message: message || "Authentifizierung erforderlich"
-  });
-}
-
-async function attachUser(req, res, next) {
+async function auth(req, res, next) {
   try {
-    const authHeader = req.headers.authorization || "";
-    if (!authHeader.startsWith("Bearer ")) {
-      return missingAuthResponse(res, "Kein gültiger Authorization Header vorhanden");
-    }
-
-    const token = authHeader.replace("Bearer ", "").trim();
+    const header = req.headers.authorization || "";
+    const token = extractBearerToken(header);
     if (!token) {
-      return missingAuthResponse(res, "Kein Token übermittelt");
+      return res.status(401).json({ success: false, message: "No token" });
     }
-
-    let decoded;
-    try {
-      decoded = jwt.verify(token, ensureJwtSecret());
-    } catch (err) {
-      const status = err.name === "TokenExpiredError" ? 401 : 401;
-      return res.status(status).json({
-        success: false,
-        message: err.message || "Token ungültig"
-      });
+    const decoded = jwt.verify(token, ensureJwtSecret());
+    if (!decoded?.id) {
+      return res.status(401).json({ success: false, message: "Invalid token payload" });
     }
-
-    if (!decoded || !decoded.id) {
-      return missingAuthResponse(res, "Token ungültig oder unvollständig");
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(401).json({ success: false, message: "Invalid user" });
     }
-
-    const userDoc = await User.findById(decoded.id).select("-password");
-    if (!userDoc) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid token user"
-      });
-    }
-
-    req.userDoc = userDoc;
-    req.userRaw = userDoc;
-    req.user = buildSafeUser(userDoc);
+    req.user = user;
+    req.userDoc = user;
+    req.userId = user._id?.toString();
+    req.authToken = token;
     next();
   } catch (err) {
-    console.error("[AUTH] Fehler bei der Token-Verarbeitung:", err);
-    res.status(500).json({
-      success: false,
-      message: "Authentifizierung fehlgeschlagen"
-    });
+    console.error("[AUTH] Verification failed:", err.message);
+    return res.status(401).json({ success: false, message: "Unauthorized" });
   }
 }
 
 async function optionalAuth(req, res, next) {
   try {
-    const authHeader = req.headers.authorization || "";
-    if (!authHeader.startsWith("Bearer ")) {
-      return next();
-    }
-
-    const token = authHeader.replace("Bearer ", "").trim();
+    const header = req.headers.authorization || "";
+    const token = extractBearerToken(header);
     if (!token) {
       return next();
     }
-
     const decoded = jwt.verify(token, ensureJwtSecret());
     if (!decoded?.id) {
       return next();
     }
-
-    const userDoc = await User.findById(decoded.id).select("-password");
-    if (userDoc) {
-      req.userDoc = userDoc;
-      req.userRaw = userDoc;
-      req.user = buildSafeUser(userDoc);
+    const user = await User.findById(decoded.id);
+    if (user) {
+      req.user = user;
+      req.userDoc = user;
+      req.userId = user._id?.toString();
+      req.authToken = token;
     }
   } catch (err) {
-    console.warn("[AUTH][optional]", err.message);
+    console.warn("[AUTH][optional] Verification failed:", err.message);
   }
   next();
 }
 
-module.exports = attachUser;
-module.exports.attachUser = attachUser;
+module.exports = auth;
 module.exports.optionalAuth = optionalAuth;

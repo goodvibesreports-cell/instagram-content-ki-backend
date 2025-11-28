@@ -3,7 +3,7 @@ const auth = require("../middleware/auth.js");
 const { createSuccessResponse, createErrorResponse } = require("../utils/errorHandler.js");
 const { logger } = require("../utils/logger.js");
 const Organization = require("../models/Organization.js");
-const User = require("../models/User.js");
+const User = require("../models/User");
 
 const router = express.Router();
 

@@ -16,7 +16,7 @@ exports.verifyUser = verifyUser;
 var _bcryptjs = _interopRequireDefault(require("bcryptjs"));
 var _jsonwebtoken = _interopRequireDefault(require("jsonwebtoken"));
 var _crypto = _interopRequireDefault(require("crypto"));
-var _User = _interopRequireDefault(require("../models/User.js"));
+var _User = _interopRequireDefault(require("../models/User"));
 var _CreatorProfile = _interopRequireDefault(require("../models/CreatorProfile.js"));
 var _emailService = require("./emailService.js");
 function _interopRequireDefault(e) { return e && e.__esModule ? e : { default: e }; }

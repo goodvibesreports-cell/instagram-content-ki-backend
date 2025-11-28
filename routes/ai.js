@@ -23,7 +23,7 @@ const {
 } = require("../services/aiService.js");
 const { createSuccessResponse, createErrorResponse } = require("../utils/errorHandler.js");
 const { logger } = require("../utils/logger.js");
-const User = require("../models/User.js");
+const User = require("../models/User");
 const GeneratedContent = require("../models/GeneratedContent.js");
 
 const router = express.Router();

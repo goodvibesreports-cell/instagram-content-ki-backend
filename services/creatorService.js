@@ -7,7 +7,7 @@ exports.buildCreatorPrompt = buildCreatorPrompt;
 exports.getCreatorProfile = getCreatorProfile;
 exports.saveCreatorProfile = saveCreatorProfile;
 var _CreatorProfile = _interopRequireDefault(require("../models/CreatorProfile.js"));
-var _User = _interopRequireDefault(require("../models/User.js"));
+var _User = _interopRequireDefault(require("../models/User"));
 function _interopRequireDefault(e) { return e && e.__esModule ? e : { default: e }; }
 async function getCreatorProfile(userId) {
   return _CreatorProfile.default.findOne({
