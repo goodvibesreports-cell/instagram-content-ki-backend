@@ -7,9 +7,20 @@ exports.default = analyzeUnifiedItems;
 const WEEKDAY_LABELS = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
 function getDateParts(item) {
   if (!item) return null;
-  const iso = item.date || (item.timestamp ? new Date(item.timestamp).toISOString() : null);
-  const date = iso ? new Date(iso) : item.timestamp ? new Date(item.timestamp) : null;
-  if (!date || Number.isNaN(date.getTime())) {
+  let timestamp = null;
+  if (typeof item.timestamp === "number" && Number.isFinite(item.timestamp)) {
+    timestamp = item.timestamp;
+  } else if (item.date) {
+    const parsed = new Date(item.date);
+    if (!Number.isNaN(parsed.getTime())) {
+      timestamp = parsed.getTime();
+    }
+  }
+  if (timestamp === null) {
+    return null;
+  }
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
     return null;
   }
   return {
@@ -142,3 +153,4 @@ function analyzeUnifiedItems(items = []) {
     global: analyzePlatform(items)
   };
 }
+

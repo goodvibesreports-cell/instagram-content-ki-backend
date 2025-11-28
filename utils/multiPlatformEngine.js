@@ -18,7 +18,7 @@ var _youtubeParser = require("./parsers/youtubeParser.js");
 var _instagramHtmlParser = require("./instagramHtmlParser.js");
 var _facebookHtmlParser = require("./facebookHtmlParser.js");
 function _interopRequireDefault(e) { return e && e.__esModule ? e : { default: e }; }
-const MEDIA_EXTENSIONS = new Set([".mp4", ".mov", ".avi", ".mkv", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif"]);
+const MEDIA_EXTENSIONS = new Set([".mp4", ".mov", ".avi", ".mkv", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif", ".webm"]);
 const JSON_EXTENSIONS = new Set([".json", ".txt", ".csv"]);
 const HTML_EXTENSIONS = new Set([".html", ".htm"]);
 const TEXT_EXTENSIONS = new Set([...JSON_EXTENSIONS, ...HTML_EXTENSIONS]);
@@ -34,6 +34,8 @@ const CONTENT_HINTS = {
   facebook: [/facebook\.com/, /"your_posts"/, /"timeline"/],
   youtube: [/youtube\.com\/watch/, /"snippet"/, /"uploads"/]
 };
+const WATCH_HISTORY_PATTERNS = [/watch ?history/i, /liked[_ ]videos/i, /recently ?deleted/i, /likes? ?list/i];
+const SNIPPET_CHAR_LIMIT = 600;
 function toInternalFile(file = {}) {
   if (!file || !file.buffer) {
     throw new Error("Invalid file buffer");
@@ -53,7 +55,7 @@ function looksLikeJsonString(text = "") {
   const trimmed = text.trimStart();
   return trimmed.startsWith("{") || trimmed.startsWith("[");
 }
-function buildSnippet(content, limit = 400) {
+function buildSnippet(content, limit = SNIPPET_CHAR_LIMIT) {
   if (!content) return null;
   if (typeof content === "string") {
     return content.trim().slice(0, limit);
@@ -70,36 +72,89 @@ function extractHashtagsFromText(text = "") {
   if (!matches) return [];
   return [...new Set(matches.map(tag => tag.replace("#", "").toLowerCase()))];
 }
-function normalizeItem(entry = {}, platform = "unknown") {
-  if (!entry) return null;
-  if (entry.platform && entry.date) {
-    const hashtags = entry.hashtags || entry.meta?.hashtags || extractHashtagsFromText(entry.caption || entry.description || "");
-    return {
-      ...entry,
-      platform: entry.platform || platform,
-      hashtags
-    };
+function normalizeHashtagList(value, fallbackText = "") {
+  const base = [];
+  if (Array.isArray(value)) {
+    base.push(...value);
+  } else if (typeof value === "string") {
+    base.push(...value.split(/[, ]+/));
   }
-  const isoDate = entry.date || (entry.timestamp ? new Date(entry.timestamp).toISOString() : new Date().toISOString());
-  return (0, _normalizedPost.createNormalizedPost)({
-    platform,
-    id: entry.id || entry.url || entry.link || `${platform}-${Date.now()}`,
-    link: entry.url || entry.link || "",
-    date: isoDate,
-    timestamp: entry.timestamp,
-    title: entry.title || "",
-    caption: entry.caption || entry.text || "",
-    description: entry.description || "",
-    likes: entry.likes ?? null,
-    comments: entry.comments ?? null,
-    shares: entry.shares ?? null,
-    views: entry.views ?? null,
-    hashtags: entry.hashtags || extractHashtagsFromText(entry.caption || entry.description || ""),
-    meta: {
-      sourceFile: entry.sourceFile,
-      raw: entry.raw || entry
-    }
-  });
+  base.push(...extractHashtagsFromText(fallbackText));
+  return [...new Set(base.filter(Boolean).map(tag => tag.replace("#", "").toLowerCase()))];
+}
+function ensureTimestamp(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  const date = value ? new Date(value) : null;
+  if (date && !Number.isNaN(date.getTime())) {
+    return date.getTime();
+  }
+  return Date.now();
+}
+function shouldIgnoreNormalizedItem(item = {}) {
+  const context = [
+    item.meta?.category,
+    item.meta?.sourceSection,
+    item.meta?.type,
+    item.caption,
+    item.title
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (WATCH_HISTORY_PATTERNS.some((regex) => regex.test(context))) {
+    return true;
+  }
+  const hasDates = Boolean(item.date || item.timestamp);
+  const hasIdentity = Boolean(item.id || item.link);
+  return !hasDates || !hasIdentity;
+}
+function normalizeItem(entry = {}, platform = "unknown", fileName = "") {
+  if (!entry) return null;
+  const baseCaption = entry.caption || entry.text || entry.description || entry.title || "";
+  let normalized;
+  if (entry.platform && entry.date) {
+    normalized = {
+      ...entry,
+      platform: (entry.platform || platform).toLowerCase(),
+      date: entry.date,
+      timestamp: ensureTimestamp(entry.timestamp || entry.date)
+    };
+  } else {
+    normalized = (0, _normalizedPost.createNormalizedPost)({
+      platform,
+      id: entry.id || entry.url || entry.link || `${platform}-${Date.now()}`,
+      link: entry.url || entry.link || "",
+      date: entry.date || entry.timestamp || new Date().toISOString(),
+      timestamp: ensureTimestamp(entry.timestamp || entry.date),
+      title: entry.title || "",
+      caption: baseCaption,
+      description: entry.description || "",
+      likes: entry.likes ?? null,
+      comments: entry.comments ?? null,
+      shares: entry.shares ?? null,
+      views: entry.views ?? null,
+      meta: {
+        sourceFile: entry.sourceFile || fileName,
+        ...entry.meta
+      }
+    });
+  }
+  normalized.hashtags = normalizeHashtagList(entry.hashtags || normalized.hashtags, baseCaption);
+  const meta = {
+    ...(normalized.meta || {}),
+    sourceFile: normalized.meta?.sourceFile || entry.sourceFile || fileName
+  };
+  if (meta.raw) {
+    delete meta.raw;
+  }
+  const snippet = buildSnippet(entry.meta?.raw || entry.raw || entry);
+  if (snippet) {
+    meta.snippet = snippet;
+  }
+  normalized.meta = meta;
+  return normalized;
 }
 function autoDetectPlatform(rawContent, fileName = "") {
   const signals = [];
@@ -220,8 +275,22 @@ function filterRelevantData(payload, platform, fileName = "", options = {}) {
         file: fileName
       });
   }
+  const filteredItems = [];
+  normalizedItems.forEach(item => {
+    const enriched = normalizeItem(item, platform, fileName);
+    if (!enriched) return;
+    if (shouldIgnoreNormalizedItem(enriched)) {
+      ignored.push({
+        reason: "non_post_entry",
+        file: fileName,
+        id: enriched.id
+      });
+      return;
+    }
+    filteredItems.push(enriched);
+  });
   return {
-    items: normalizedItems,
+    items: filteredItems,
     ignored,
     rawSnippet,
     flags
@@ -358,11 +427,9 @@ function processUploadBuffer(files = [], {
         items.push(normalized);
         const platformKey = normalized.platform || detection.platform;
         perPlatform[platformKey] = perPlatform[platformKey] || {
-          count: 0,
-          items: []
+          count: 0
         };
         perPlatform[platformKey].count += 1;
-        perPlatform[platformKey].items.push(normalized);
       });
     }
     const platformCounts = Object.fromEntries(Object.entries(perPlatform).map(([platform, bucket]) => [platform, bucket.count]));

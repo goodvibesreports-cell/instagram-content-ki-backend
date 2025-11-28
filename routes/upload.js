@@ -3,7 +3,6 @@ const multer = require("multer");
 const { clampPlatform } = require("../utils/normalizedPost.js");
 const { processUploadBuffer } = require("../utils/multiPlatformEngine.js");
 const analyzeUnifiedItems = require("../utils/unifiedAnalyzer.js");
-const analyzeContent = require("../utils/contentAnalyzer.js");
 const { analyzeTikTokVideos } = require("../utils/tiktokAnalyzer.js");
 const safeTikTokStreamParser = require("../utils/safeTikTokStreamParser.js");
 const auth = require("../middleware/auth");
@@ -67,11 +66,20 @@ function toIsoDate(value) {
 function sanitizeItems(items = [], fallbackPlatform = "unknown") {
   return items.map((item, index) => {
     const isoDate = toIsoDate(item.date || item.timestamp);
+    const hashtags = Array.isArray(item.hashtags)
+      ? item.hashtags
+      : typeof item.hashtags === "string"
+      ? item.hashtags.split(/[, ]+/)
+      : [];
+    const normalizedHashtags = [...new Set(hashtags.map((tag) => tag.replace("#", "").toLowerCase()).filter(Boolean))];
+    const timestamp = isoDate ? new Date(isoDate).getTime() : Number(item.timestamp) || null;
+    const meta = { ...(item.meta || {}) };
+    if (meta.raw) delete meta.raw;
     return {
       id: item.id || item.link || `item-${index}`,
       platform: (item.platform || fallbackPlatform || "unknown").toLowerCase(),
       date: isoDate,
-      timestamp: isoDate ? new Date(isoDate).getTime() : null,
+      timestamp,
       link: item.link || "",
       likes: Number.isFinite(item.likes) ? item.likes : Number(item.likes) || 0,
       comments: Number.isFinite(item.comments) ? item.comments : Number(item.comments) || 0,
@@ -81,9 +89,9 @@ function sanitizeItems(items = [], fallbackPlatform = "unknown") {
       soundOrAudio: item.sound || item.soundOrAudio || "",
       location: item.location || "",
       coverImage: item.coverImage || null,
-      hashtags: Array.isArray(item.hashtags) ? item.hashtags : [],
+      hashtags: normalizedHashtags,
       isDeleted: Boolean(item.isDeleted),
-      meta: item.meta || {}
+      meta
     };
   });
 }
@@ -91,11 +99,8 @@ function sanitizeItems(items = [], fallbackPlatform = "unknown") {
 function buildPerPlatformSummary(items = []) {
   return items.reduce((acc, item) => {
     const key = item.platform || "unknown";
-    if (!acc[key]) {
-      acc[key] = { count: 0, items: [] };
-    }
+    acc[key] = acc[key] || { count: 0 };
     acc[key].count += 1;
-    acc[key].items.push(item);
     return acc;
   }, {});
 }
@@ -123,18 +128,56 @@ function respondGracefully(res, { message = SAFE_RESPONSE_MESSAGE, ignoredEntrie
   });
 }
 
+function parseDateRange(query = {}) {
+  const fromDate = query.fromDate ? new Date(query.fromDate) : null;
+  const toDate = query.toDate ? new Date(query.toDate) : null;
+  const start = fromDate && !Number.isNaN(fromDate.getTime()) ? fromDate : null;
+  let end = toDate && !Number.isNaN(toDate.getTime()) ? toDate : null;
+  if (end) {
+    end.setHours(23, 59, 59, 999);
+  }
+  return {
+    from: start,
+    to: end
+  };
+}
+
+function filterItemsByDate(items = [], range = {}) {
+  if (!range.from && !range.to) return items;
+  return items.filter((item) => {
+    const ts =
+      typeof item.timestamp === "number"
+        ? item.timestamp
+        : item.timestamp
+        ? Number(item.timestamp)
+        : item.date
+        ? new Date(item.date).getTime()
+        : null;
+    if (!ts || Number.isNaN(ts)) {
+      return false;
+    }
+    if (range.from && ts < range.from.getTime()) return false;
+    if (range.to && ts > range.to.getTime()) return false;
+    return true;
+  });
+}
+
+function formatDateRange(range = {}) {
+  return {
+    from: range.from ? range.from.toISOString() : null,
+    to: range.to ? range.to.toISOString() : null
+  };
+}
+
 function collectTikTokItems(dataset = {}) {
   if (!dataset || typeof dataset !== "object") return [];
-  const candidateSources = [
-    Array.isArray(dataset.videos) && dataset.videos.length ? dataset.videos : null,
-    Array.isArray(dataset.posts) && dataset.posts.length ? dataset.posts : null,
-    dataset.metadata?.perPlatform?.tiktok?.items || null
-  ].filter(Boolean);
-  const rawItems = candidateSources.length ? candidateSources[0] : [];
-  if (!Array.isArray(rawItems) || !rawItems.length) {
+  const videos = Array.isArray(dataset.videos) ? dataset.videos : [];
+  const legacyPosts = Array.isArray(dataset.posts) ? dataset.posts : [];
+  const combined = [...videos, ...legacyPosts].filter((item) => (item.platform || dataset.platform || "tiktok") === "tiktok");
+  if (!combined.length) {
     return [];
   }
-  return sanitizeItems(rawItems, "tiktok");
+  return sanitizeItems(combined, "tiktok");
 }
 
 function buildTikTokAnalysisResult(items = []) {
@@ -486,18 +529,16 @@ router.get("/analysis/unified/:datasetId", auth, async (req, res) => {
       return res.status(404).json({ success: false, message: "Dataset nicht gefunden" });
     }
 
-    let analysis = dataset.metadata?.analysis;
-    if (!analysis) {
-      analysis = analyzeUnifiedItems(dataset.videos || []);
-      dataset.metadata = dataset.metadata || {};
-      dataset.metadata.analysis = analysis;
-      await dataset.save();
-    }
-
+    const range = parseDateRange(req.query || {});
+    const items = Array.isArray(dataset.videos) ? dataset.videos : [];
+    const scopedItems = filterItemsByDate(items, range);
+    const analysis = analyzeUnifiedItems(scopedItems);
     return res.json({
       success: true,
       datasetId: dataset._id,
-      analysis
+      analysis,
+      dateRange: formatDateRange(range),
+      itemCount: scopedItems.length
     });
   } catch (error) {
     console.error("Unified analysis fetch error:", error);
@@ -551,8 +592,10 @@ router.get("/analysis/:platform", auth, async (req, res) => {
       });
     }
 
+    const range = parseDateRange(req.query || {});
+
     if (platform === "tiktok") {
-      const tikTokItems = collectTikTokItems(dataset);
+      const tikTokItems = filterItemsByDate(collectTikTokItems(dataset), range);
       const result = buildTikTokAnalysisResult(tikTokItems);
       return res.json({
         success: true,
@@ -562,12 +605,16 @@ router.get("/analysis/:platform", auth, async (req, res) => {
         count: result.count,
         analysis: result.analysis,
         posts: result.posts,
-        ignoredEntries: dataset.ignoredEntries || []
+        ignoredEntries: dataset.ignoredEntries || [],
+        dateRange: formatDateRange(range),
+        itemCount: tikTokItems.length
       });
     }
 
-    const posts = (dataset.posts || []).filter((post) => (post.platform || dataset.platform || platform) === platform);
-    if (!posts.length) {
+    const videos = Array.isArray(dataset.videos) ? dataset.videos : [];
+    const posts = videos.filter((post) => (post.platform || dataset.platform || platform) === platform);
+    const scopedPosts = filterItemsByDate(posts, range);
+    if (!scopedPosts.length) {
       return res.json({
         success: true,
         datasetId,
@@ -575,13 +622,16 @@ router.get("/analysis/:platform", auth, async (req, res) => {
         analysis: null,
         posts: [],
         count: 0,
+        dateRange: formatDateRange(range),
         message: "Kein analysierbares Material gefunden"
       });
     }
 
-    const summary = analyzeContent(posts, { platformFilter: platform });
-    const totalLikes = posts.reduce((sum, post) => sum + (post.likes || 0), 0);
-    const dates = posts
+    const unifiedResult = analyzeUnifiedItems(scopedPosts);
+    const platformInsights = unifiedResult.perPlatform[platform] || analyzeUnifiedItems(scopedPosts).global;
+    const totalLikes = scopedPosts.reduce((sum, post) => sum + (post.likes || 0), 0);
+    const totalComments = scopedPosts.reduce((sum, post) => sum + (post.comments || 0), 0);
+    const dates = scopedPosts
       .map((post) => {
         const date = new Date(post.date || post.timestamp);
         return Number.isNaN(date.getTime()) ? null : date;
@@ -590,13 +640,18 @@ router.get("/analysis/:platform", auth, async (req, res) => {
       .sort((a, b) => a - b);
 
     const formatted = {
-      bestPostingHours: summary.bestTimes?.hours || summary.bestPostingHours || [],
-      postingDaysOfWeek: summary.bestDays?.days || summary.bestDaysOfWeek || [],
-      topVideos: summary.virality?.viralVideos || summary.topPostsByLikes || [],
+      bestPostingHours: platformInsights.bestPostingHours || [],
+      postingDaysOfWeek: platformInsights.bestWeekdays || [],
+      topHashtags: platformInsights.topHashtags || [],
+      topVideos: scopedPosts
+        .slice()
+        .sort((a, b) => (b.likes || 0) - (a.likes || 0))
+        .slice(0, MAX_ANALYSIS_POST_PREVIEW),
       globalStats: {
-        totalVideos: posts.length,
+        totalVideos: scopedPosts.length,
         totalLikes,
-        avgLikes: posts.length ? Math.round(totalLikes / posts.length) : 0,
+        avgLikes: scopedPosts.length ? Math.round(totalLikes / scopedPosts.length) : 0,
+        avgComments: scopedPosts.length ? Math.round(totalComments / scopedPosts.length) : 0,
         firstPostDate: dates[0]?.toISOString(),
         lastPostDate: dates[dates.length - 1]?.toISOString()
       }
@@ -608,8 +663,9 @@ router.get("/analysis/:platform", auth, async (req, res) => {
       platform,
       message: "Analyse erfolgreich",
       analysis: formatted,
-      posts: posts.slice(0, MAX_ANALYSIS_POST_PREVIEW),
-      count: posts.length
+      posts: formatted.topVideos,
+      count: scopedPosts.length,
+      dateRange: formatDateRange(range)
     });
   } catch (error) {
     console.error("Analysis fetch error:", error);
