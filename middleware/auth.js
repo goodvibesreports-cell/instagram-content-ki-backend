@@ -24,6 +24,11 @@ module.exports = async function auth(req, res, next) {
 
     req.user = user;
     req.userDoc = user;
+    if (user && user._id) {
+      const stringId = user._id.toString();
+      req.user.id = stringId;
+      req.userDoc.id = stringId;
+    }
     next();
   } catch (err) {
     console.error("AUTH ERROR:", err);

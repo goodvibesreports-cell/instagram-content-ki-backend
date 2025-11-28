@@ -57,14 +57,10 @@ function sanitizeUserPayload(user) {
   return {
     id,
     email: source.email,
-    tier: source.tier || source.plan || "basic",
     verified: Boolean(source.verified),
-    platformMode: source.platformMode || "tiktok",
     credits,
     bonusCredits,
-    totalCredits,
-    settings: source.settings || {},
-    creatorProfile: source.creatorProfile || {}
+    totalCredits
   };
 }
 
