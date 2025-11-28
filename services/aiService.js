@@ -1,11 +1,11 @@
-import OpenAI from "openai";
-import { cacheService } from "./cacheService.js";
-import { logger } from "../utils/logger.js";
-import { buildCreatorPrompt } from "./creatorService.js";
-import { PLATFORM_TEMPLATES } from "../utils/platformTemplates.js";
-import { scorePerformance } from "../utils/scoring.js";
+const OpenAI = require("openai");
+const { cacheService } = require("./cacheService.js");
+const { logger } = require("../utils/logger.js");
+const { buildCreatorPrompt } = require("./creatorService.js");
+const { PLATFORM_TEMPLATES } = require("../utils/platformTemplates.js");
+const { scorePerformance } = require("../utils/scoring.js");
 
-export const CREDIT_COSTS = Object.freeze({
+const CREDIT_COSTS = Object.freeze({
   prompt: 1,
   video_idea: 2,
   hook: 1,
@@ -57,7 +57,7 @@ async function callOpenAI(messages, { type = "general", maxTokens = 1200, temper
   return result;
 }
 
-export async function generatePromptIdeas(user, profile, { topic, platform, count = 5 }) {
+async function generatePromptIdeas(user, profile, { topic, platform, count = 5 }) {
   const platformHint = PLATFORM_TEMPLATES[platform] || PLATFORM_TEMPLATES.instagram;
   const dna = buildCreatorPrompt(user, profile);
 
@@ -84,7 +84,7 @@ FORMAT:
   ], { type: "prompt", cacheKey: { topic, platform, dna } });
 }
 
-export async function generateVideoScript(user, profile, { prompt, platform }) {
+async function generateVideoScript(user, profile, { prompt, platform }) {
   const platformHint = PLATFORM_TEMPLATES[platform] || PLATFORM_TEMPLATES.instagram;
   const dna = buildCreatorPrompt(user, profile);
 
@@ -99,7 +99,7 @@ Berücksichtige Hook, Szenen, Voiceover, Text-Overlays und CTA.`;
   return content;
 }
 
-export async function analyzeUpload(user, profile, payload) {
+async function analyzeUpload(user, profile, payload) {
   const platformHint = PLATFORM_TEMPLATES[payload.platform] || PLATFORM_TEMPLATES.instagram;
   const dna = buildCreatorPrompt(user, profile);
 
@@ -114,7 +114,7 @@ Bewerte Hook, Story, CTA, Hashtags und gib konkrete Scores (0-100).`;
   return response;
 }
 
-export async function generateSeriesBlueprint(user, profile, { topic, episodes = 10, platform }) {
+async function generateSeriesBlueprint(user, profile, { topic, episodes = 10, platform }) {
   const platformHint = PLATFORM_TEMPLATES[platform] || PLATFORM_TEMPLATES.instagram;
   const dna = buildCreatorPrompt(user, profile);
 
@@ -127,7 +127,7 @@ Erstelle Serien-Formate mit Episodenübersicht für ${platformHint.label}.`;
   ], { type: "series", maxTokens: 2200 });
 }
 
-export function calculateMomentum(performance) {
+function calculateMomentum(performance) {
   return scorePerformance(performance);
 }
 
@@ -135,7 +135,7 @@ export function calculateMomentum(performance) {
 // Advanced Generators (Hooks, Captions, Titles)
 // ==============================
 
-export async function generateHooks(topic, count = 10, style = "mixed") {
+async function generateHooks(topic, count = 10, style = "mixed") {
   const system = "Du bist ein Hook-Copywriter für kurze Video-Formate. Schreibe radikale, scroll-stoppende Hooks.";
   const userPrompt = `THEMA: ${topic}
 ANZAHL: ${count}
@@ -155,7 +155,7 @@ FORMAT:
   );
 }
 
-export async function generateCaptions(topic, { tone = "casual", includeEmojis = true, includeHashtags = true, count = 3 } = {}) {
+async function generateCaptions(topic, { tone = "casual", includeEmojis = true, includeHashtags = true, count = 3 } = {}) {
   const system = "Du bist ein Instagram Caption Writer. Jede Caption enthält Hook, Story und CTA.";
   const userPrompt = `THEMA: ${topic}
 TONALITÄT: ${tone}
@@ -180,7 +180,7 @@ Hashtags: ...
   );
 }
 
-export async function generateTitles(topic, style = "clickbait", count = 5) {
+async function generateTitles(topic, style = "clickbait", count = 5) {
   const system = "Du bist ein Title-Generator für Reels/TikTok. Schreibe ultra-kurze Titel mit maximal 55 Zeichen.";
   const userPrompt = `THEMA: ${topic}
 STIL: ${style}
@@ -203,7 +203,7 @@ FORMAT:
 // Analysen
 // ==============================
 
-export async function analyzeTrends(niche, platform = "instagram", timeframe = "week") {
+async function analyzeTrends(niche, platform = "instagram", timeframe = "week") {
   const system = "Du bist ein Trend-Analyst für Social Media. Liefere Insights anhand aktueller Best Practices.";
   const userPrompt = `NISCHE: ${niche}
 PLATTFORM: ${platform}
@@ -224,7 +224,7 @@ FORMAT:
   );
 }
 
-export async function analyzeVirality(content, type = "full") {
+async function analyzeVirality(content, type = "full") {
   const system = "Du bist ein Virality-Analyst. Bewerte Content nach Story, Emotion, Hook und CTA.";
   const userPrompt = `KONTENT-TYP: ${type}
 INHALT:
@@ -268,7 +268,7 @@ function tryParseJsonContent(content) {
   return null;
 }
 
-export async function summarizeTikTokInsights(analysisPayload = {}) {
+async function summarizeTikTokInsights(analysisPayload = {}) {
   const systemPrompt =
     "Du bist ein Senior TikTok Performance Strategist. Leite klare, umsetzbare Empfehlungen aus den gelieferten Analytics ab.";
   const formatInstructions = `Gib die Antwort als JSON mit folgenden Feldern aus:
@@ -311,3 +311,18 @@ export async function summarizeTikTokInsights(analysisPayload = {}) {
     }
   };
 }
+
+module.exports = {
+  CREDIT_COSTS,
+  generatePromptIdeas,
+  generateVideoScript,
+  analyzeUpload,
+  generateSeriesBlueprint,
+  calculateMomentum,
+  generateHooks,
+  generateCaptions,
+  generateTitles,
+  analyzeTrends,
+  analyzeVirality,
+  summarizeTikTokInsights
+};

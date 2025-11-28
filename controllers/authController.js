@@ -1,4 +1,4 @@
-import {
+const {
   registerUser,
   verifyUser,
   loginUser,
@@ -8,8 +8,8 @@ import {
   provisionTestAccount,
   refreshAuthSession,
   revokeSessions
-} from "../services/authService.js";
-import { createSuccessResponse } from "../utils/errorHandler.js";
+} = require("../services/authService.js");
+const { createSuccessResponse } = require("../utils/errorHandler.js");
 
 function getSessionMeta(req) {
   const forwarded = req.headers["x-forwarded-for"];
@@ -22,7 +22,7 @@ function getSessionMeta(req) {
   };
 }
 
-export async function register(req, res, next) {
+async function register(req, res, next) {
   try {
     const payload = await registerUser(req.validated, getSessionMeta(req));
     res.status(201).json(createSuccessResponse(payload, "Registrierung erfolgreich!"));
@@ -31,7 +31,7 @@ export async function register(req, res, next) {
   }
 }
 
-export async function registerTestAccount(req, res, next) {
+async function registerTestAccount(req, res, next) {
   try {
     const providedKey = req.header("x-test-key") || req.body.testKey;
     const allowedKey = process.env.TEST_ACCOUNT_KEY || "ic-ki-test-key";
@@ -54,7 +54,7 @@ export async function registerTestAccount(req, res, next) {
   }
 }
 
-export async function verify(req, res, next) {
+async function verify(req, res, next) {
   try {
     const payload = await verifyUser(req.validated.token, getSessionMeta(req));
     res.json(createSuccessResponse(payload, "E-Mail bestätigt – du bist jetzt eingeloggt."));
@@ -63,7 +63,7 @@ export async function verify(req, res, next) {
   }
 }
 
-export async function login(req, res, next) {
+async function login(req, res, next) {
   try {
     const payload = await loginUser(req.validated, getSessionMeta(req));
     res.json(createSuccessResponse(payload, "Login erfolgreich!"));
@@ -72,7 +72,7 @@ export async function login(req, res, next) {
   }
 }
 
-export async function me(req, res, next) {
+async function me(req, res, next) {
   try {
     const user = await getCurrentUser(req.user.id);
     res.json(createSuccessResponse(user));
@@ -81,7 +81,7 @@ export async function me(req, res, next) {
   }
 }
 
-export async function setPlatformMode(req, res, next) {
+async function setPlatformMode(req, res, next) {
   try {
     const user = await updatePlatformMode(req.user.id, req.validated.platform);
     res.json(createSuccessResponse(user, "Platform Mode aktualisiert"));
@@ -90,7 +90,7 @@ export async function setPlatformMode(req, res, next) {
   }
 }
 
-export async function changePassword(req, res, next) {
+async function changePassword(req, res, next) {
   try {
     await updatePassword(req.user.id, req.validated.currentPassword, req.validated.newPassword);
     res.json(createSuccessResponse(null, "Passwort erfolgreich geändert"));
@@ -99,7 +99,7 @@ export async function changePassword(req, res, next) {
   }
 }
 
-export async function refreshSession(req, res, next) {
+async function refreshSession(req, res, next) {
   try {
     const payload = await refreshAuthSession(req.validated.refreshToken, getSessionMeta(req));
     res.json(createSuccessResponse(payload, "Session aktualisiert"));
@@ -108,7 +108,7 @@ export async function refreshSession(req, res, next) {
   }
 }
 
-export async function logout(req, res, next) {
+async function logout(req, res, next) {
   try {
     await revokeSessions(req.user.id, req.validated.refreshToken, req.validated.fromAllDevices);
     const message = req.validated.fromAllDevices ? "Alle Sessions beendet" : "Logout erfolgreich";
@@ -117,4 +117,16 @@ export async function logout(req, res, next) {
     next(err);
   }
 }
+
+module.exports = {
+  register,
+  registerTestAccount,
+  verify,
+  login,
+  me,
+  setPlatformMode,
+  changePassword,
+  refreshSession,
+  logout
+};
 

@@ -1,6 +1,6 @@
-import fs from "fs";
-import path from "path";
-import { execSync } from "child_process";
+const fs = require("fs");
+const path = require("path");
+const { execSync } = require("child_process");
 
 console.log("==============================================");
 console.log(" Instagram Content KI – Backend Auth Installer ");
@@ -29,14 +29,14 @@ dirs.forEach((d) => {
 // ------------------------------------------------
 fs.writeFileSync(
   path.join(base, "models", "User.js"),
-`import mongoose from "mongoose";
+`const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true }
 }, { timestamps: true });
 
-export default mongoose.model("User", userSchema);
+module.exports = mongoose.model("User", userSchema);
 `
 );
 console.log("✔ models/User.js erstellt");
@@ -46,9 +46,9 @@ console.log("✔ models/User.js erstellt");
 // ------------------------------------------------
 fs.writeFileSync(
   path.join(base, "middleware", "auth.js"),
-`import jwt from "jsonwebtoken";
+`const jwt = require("jsonwebtoken");
 
-export default function auth(req, res, next) {
+module.exports = function auth(req, res, next) {
   const header = req.header("Authorization");
   const token = header?.replace("Bearer ", "");
 
@@ -61,7 +61,7 @@ export default function auth(req, res, next) {
   } catch {
     return res.status(401).json({ error: "Invalid token" });
   }
-}
+};
 `
 );
 console.log("✔ middleware/auth.js erstellt");
@@ -71,11 +71,11 @@ console.log("✔ middleware/auth.js erstellt");
 // ------------------------------------------------
 fs.writeFileSync(
   path.join(base, "routes", "auth.js"),
-`import express from "express";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import User from "../models/User.js";
-import auth from "../middleware/auth.js";
+`const express = require("express");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const User = require("../models/User.js");
+const auth = require("../middleware/auth.js");
 
 const router = express.Router();
 
@@ -120,7 +120,7 @@ router.get("/me", auth, async (req, res) => {
   res.json(user);
 });
 
-export default router;
+module.exports = router;
 `
 );
 console.log("✔ routes/auth.js erstellt");
@@ -132,7 +132,7 @@ let index = fs.readFileSync(path.join(base, "index.js"), "utf8");
 
 if (!index.includes("authRoutes")) {
   index =
-    `import authRoutes from "./routes/auth.js";\n` +
+    `const authRoutes = require("./routes/auth.js");\n` +
     index.replace("app.use(cors());", `app.use(cors());\napp.use("/auth", authRoutes);`);
 }
 

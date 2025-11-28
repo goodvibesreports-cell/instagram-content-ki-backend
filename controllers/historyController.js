@@ -1,7 +1,7 @@
-import History from "../models/History.js";
-import { createSuccessResponse } from "../utils/errorHandler.js";
+const History = require("../models/History.js");
+const { createSuccessResponse } = require("../utils/errorHandler.js");
 
-export async function listHistory(req, res, next) {
+async function listHistory(req, res, next) {
   try {
     const { type, page, limit } = req.validated;
     const query = { userId: req.user.id };
@@ -28,4 +28,8 @@ export async function listHistory(req, res, next) {
     next(err);
   }
 }
+
+module.exports = {
+  listHistory
+};
 

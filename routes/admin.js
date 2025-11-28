@@ -1,11 +1,11 @@
-import express from "express";
-import auth from "../middleware/auth.js";
-import { createSuccessResponse, createErrorResponse } from "../utils/errorHandler.js";
-import { logger } from "../utils/logger.js";
-import { cacheService } from "../services/cacheService.js";
-import User from "../models/User.js";
-import Post from "../models/Post.js";
-import GeneratedContent from "../models/GeneratedContent.js";
+const express = require("express");
+const auth = require("../middleware/auth.js");
+const { createSuccessResponse, createErrorResponse } = require("../utils/errorHandler.js");
+const { logger } = require("../utils/logger.js");
+const { cacheService } = require("../services/cacheService.js");
+const User = require("../models/User.js");
+const Post = require("../models/Post.js");
+const GeneratedContent = require("../models/GeneratedContent.js");
 
 const router = express.Router();
 
@@ -180,7 +180,7 @@ router.get("/health", auth, adminOnly, async (req, res) => {
   }));
 });
 
-export default router;
+module.exports = router;
 
 
 

@@ -1,12 +1,12 @@
-import express from "express";
-import auth, { optionalAuth } from "../middleware/auth.js";
-import { dynamicLimiter } from "../middleware/rateLimiter.js";
-import { createSuccessResponse, createErrorResponse } from "../utils/errorHandler.js";
-import { logger } from "../utils/logger.js";
-import { cacheService } from "../services/cacheService.js";
-import User from "../models/User.js";
-import GeneratedContent from "../models/GeneratedContent.js";
-import OpenAI from "openai";
+const express = require("express");
+const auth = require("../middleware/auth.js");
+const { dynamicLimiter } = require("../middleware/rateLimiter.js");
+const { createSuccessResponse, createErrorResponse } = require("../utils/errorHandler.js");
+const { logger } = require("../utils/logger.js");
+const { cacheService } = require("../services/cacheService.js");
+const User = require("../models/User.js");
+const GeneratedContent = require("../models/GeneratedContent.js");
+const OpenAI = require("openai");
 
 const router = express.Router();
 
@@ -247,5 +247,5 @@ router.get("/history", auth, async (req, res) => {
   }
 });
 
-export default router;
+module.exports = router;
 

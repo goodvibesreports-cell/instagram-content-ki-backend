@@ -1,9 +1,15 @@
-import mongoose from "mongoose";
+"use strict";
 
-const generatedContentSchema = new mongoose.Schema({
-  userId: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: "User", 
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+var _mongoose = _interopRequireDefault(require("mongoose"));
+function _interopRequireDefault(e) { return e && e.__esModule ? e : { default: e }; }
+const generatedContentSchema = new _mongoose.default.Schema({
+  userId: {
+    type: _mongoose.default.Schema.Types.ObjectId,
+    ref: "User",
     required: true,
     index: true
   },
@@ -38,14 +44,18 @@ const generatedContentSchema = new mongoose.Schema({
     tokens: Number,
     generationTime: Number
   }
-}, { 
-  timestamps: true 
+}, {
+  timestamps: true
 });
 
 // Indexes
-generatedContentSchema.index({ userId: 1, type: 1, createdAt: -1 });
-generatedContentSchema.index({ category: 1, type: 1 });
-
-export default mongoose.model("GeneratedContent", generatedContentSchema);
-
-
+generatedContentSchema.index({
+  userId: 1,
+  type: 1,
+  createdAt: -1
+});
+generatedContentSchema.index({
+  category: 1,
+  type: 1
+});
+var _default = exports.default = _mongoose.default.model("GeneratedContent", generatedContentSchema);

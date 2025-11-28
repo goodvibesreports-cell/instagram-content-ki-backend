@@ -1,6 +1,6 @@
-import express from "express";
-import auth from "../middleware/auth.js";
-import {
+const express = require("express");
+const auth = require("../middleware/auth.js");
+const {
   validate,
   registerSchema,
   loginSchema,
@@ -10,8 +10,8 @@ import {
   testAccountSchema,
   refreshTokenSchema,
   logoutSchema
-} from "../validators/schemas.js";
-import {
+} = require("../validators/schemas.js");
+const {
   register,
   login,
   verify,
@@ -21,7 +21,7 @@ import {
   registerTestAccount,
   refreshSession,
   logout
-} from "../controllers/authController.js";
+} = require("../controllers/authController.js");
 
 const router = express.Router();
 
@@ -35,4 +35,4 @@ router.put("/platform-mode", auth, validate(platformModeSchema), setPlatformMode
 router.put("/password", auth, validate(changePasswordSchema), changePassword);
 router.post("/logout", auth, validate(logoutSchema), logout);
 
-export default router;
+module.exports = router;

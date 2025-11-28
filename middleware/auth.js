@@ -1,6 +1,6 @@
-import jwt from "jsonwebtoken";
-import User from "../models/User.js";
-import { createErrorResponse } from "../utils/errorHandler.js";
+const jwt = require("jsonwebtoken");
+const User = require("../models/User.js");
+const { createErrorResponse } = require("../utils/errorHandler.js");
 
 async function attachUser(req, decoded) {
   const user = await User.findById(decoded.id);
@@ -13,7 +13,7 @@ async function attachUser(req, decoded) {
   req.userDoc = user;
 }
 
-export default async function auth(req, res, next) {
+async function auth(req, res, next) {
   try {
     const header = req.header("Authorization");
     if (!header) {
@@ -31,7 +31,7 @@ export default async function auth(req, res, next) {
   }
 }
 
-export async function optionalAuth(req, res, next) {
+async function optionalAuth(req, res, next) {
   try {
     const header = req.header("Authorization");
     if (header) {
@@ -45,3 +45,6 @@ export async function optionalAuth(req, res, next) {
     next();
   }
 }
+
+module.exports = auth;
+module.exports.optionalAuth = optionalAuth;

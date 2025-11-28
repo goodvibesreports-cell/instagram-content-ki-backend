@@ -1,21 +1,36 @@
-import CreatorProfile from "../models/CreatorProfile.js";
-import User from "../models/User.js";
+"use strict";
 
-export async function getCreatorProfile(userId) {
-  return CreatorProfile.findOne({ userId });
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.buildCreatorPrompt = buildCreatorPrompt;
+exports.getCreatorProfile = getCreatorProfile;
+exports.saveCreatorProfile = saveCreatorProfile;
+var _CreatorProfile = _interopRequireDefault(require("../models/CreatorProfile.js"));
+var _User = _interopRequireDefault(require("../models/User.js"));
+function _interopRequireDefault(e) { return e && e.__esModule ? e : { default: e }; }
+async function getCreatorProfile(userId) {
+  return _CreatorProfile.default.findOne({
+    userId
+  });
 }
-
-export async function saveCreatorProfile(userId, data) {
-  const profile = await CreatorProfile.findOneAndUpdate(
-    { userId },
-    { ...data, userId },
-    { new: true, upsert: true, setDefaultsOnInsert: true }
-  );
-  await User.findByIdAndUpdate(userId, { creatorProfile: profile._id });
+async function saveCreatorProfile(userId, data) {
+  const profile = await _CreatorProfile.default.findOneAndUpdate({
+    userId
+  }, {
+    ...data,
+    userId
+  }, {
+    new: true,
+    upsert: true,
+    setDefaultsOnInsert: true
+  });
+  await _User.default.findByIdAndUpdate(userId, {
+    creatorProfile: profile._id
+  });
   return profile;
 }
-
-export function buildCreatorPrompt(user, profile) {
+function buildCreatorPrompt(user, profile) {
   const lines = [];
   lines.push(`Creator Nische: ${profile?.niche || "unbekannt"}`);
   lines.push(`Ton: ${profile?.toneOfVoice || "neutral"}`);
@@ -35,4 +50,3 @@ export function buildCreatorPrompt(user, profile) {
   lines.push(`Aktueller Plattform Modus: ${user.platformMode}`);
   return lines.join("\n");
 }
-

@@ -1,8 +1,13 @@
-import { generatePromptIdeas, generateVideoScript, analyzeUpload, generateSeriesBlueprint } from "../services/aiService.js";
-import { getCreatorProfile } from "../services/creatorService.js";
-import { getCurrentUser } from "../services/authService.js";
-import { createSuccessResponse } from "../utils/errorHandler.js";
-import History from "../models/History.js";
+const {
+  generatePromptIdeas,
+  generateVideoScript,
+  analyzeUpload,
+  generateSeriesBlueprint
+} = require("../services/aiService.js");
+const { getCreatorProfile } = require("../services/creatorService.js");
+const { getCurrentUser } = require("../services/authService.js");
+const { createSuccessResponse } = require("../utils/errorHandler.js");
+const History = require("../models/History.js");
 
 async function ensureProfile(userId) {
   try {
@@ -14,7 +19,7 @@ async function ensureProfile(userId) {
   }
 }
 
-export async function promptIdeas(req, res, next) {
+async function promptIdeas(req, res, next) {
   try {
     const profile = await ensureProfile(req.user.id);
     const userDoc = req.userDoc || await getCurrentUser(req.user.id);
@@ -32,7 +37,7 @@ export async function promptIdeas(req, res, next) {
   }
 }
 
-export async function videoScript(req, res, next) {
+async function videoScript(req, res, next) {
   try {
     const profile = await ensureProfile(req.user.id);
     const userDoc = req.userDoc || await getCurrentUser(req.user.id);
@@ -50,7 +55,7 @@ export async function videoScript(req, res, next) {
   }
 }
 
-export async function uploadAnalyze(req, res, next) {
+async function uploadAnalyze(req, res, next) {
   try {
     const profile = await ensureProfile(req.user.id);
     const userDoc = req.userDoc || await getCurrentUser(req.user.id);
@@ -68,7 +73,7 @@ export async function uploadAnalyze(req, res, next) {
   }
 }
 
-export async function seriesBlueprint(req, res, next) {
+async function seriesBlueprint(req, res, next) {
   try {
     const profile = await ensureProfile(req.user.id);
     const userDoc = req.userDoc || await getCurrentUser(req.user.id);
@@ -78,4 +83,11 @@ export async function seriesBlueprint(req, res, next) {
     next(err);
   }
 }
+
+module.exports = {
+  promptIdeas,
+  videoScript,
+  uploadAnalyze,
+  seriesBlueprint
+};
 

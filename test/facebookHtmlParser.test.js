@@ -1,6 +1,6 @@
-import { test } from "node:test";
-import assert from "node:assert/strict";
-import { parseFacebookHtml, toUnifiedItems } from "../utils/facebookHtmlParser.js";
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const { parseFacebookHtml, toUnifiedItems } = require("../utils/facebookHtmlParser.js");
 
 const SAMPLE_HTML = `
 <html>

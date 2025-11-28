@@ -1,3 +1,10 @@
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.logger = exports.default = void 0;
+exports.requestLogger = requestLogger;
 // Farbcodes für Terminal
 const colors = {
   reset: "\x1b[0m",
@@ -21,50 +28,41 @@ const LogLevel = {
 
 // Aktuelles Log Level (kann via ENV gesetzt werden)
 const currentLevel = LogLevel[process.env.LOG_LEVEL?.toUpperCase()] ?? LogLevel.INFO;
-
 function getTimestamp() {
   return new Date().toISOString();
 }
-
 function formatMessage(level, emoji, color, message, meta = null) {
   const timestamp = `${colors.gray}[${getTimestamp()}]${colors.reset}`;
   const levelStr = `${color}${level}${colors.reset}`;
   const metaStr = meta ? ` ${colors.gray}${JSON.stringify(meta)}${colors.reset}` : "";
-  
   return `${timestamp} ${emoji} ${levelStr}: ${message}${metaStr}`;
 }
-
-export const logger = {
+const logger = exports.logger = {
   debug(message, meta = null) {
     if (currentLevel <= LogLevel.DEBUG) {
       console.log(formatMessage("DEBUG", "🔍", colors.gray, message, meta));
     }
   },
-
   info(message, meta = null) {
     if (currentLevel <= LogLevel.INFO) {
       console.log(formatMessage("INFO", "ℹ️", colors.blue, message, meta));
     }
   },
-
   success(message, meta = null) {
     if (currentLevel <= LogLevel.INFO) {
       console.log(formatMessage("SUCCESS", "✅", colors.green, message, meta));
     }
   },
-
   warn(message, meta = null) {
     if (currentLevel <= LogLevel.WARN) {
       console.warn(formatMessage("WARN", "⚠️", colors.yellow, message, meta));
     }
   },
-
   error(message, meta = null) {
     if (currentLevel <= LogLevel.ERROR) {
       console.error(formatMessage("ERROR", "❌", colors.red, message, meta));
     }
   },
-
   // Request Logger
   request(req, res, duration) {
     const status = res.statusCode;
@@ -73,13 +71,16 @@ export const logger = {
     const path = req.originalUrl || req.url;
     const statusStr = `${color}${status}${colors.reset}`;
     const time = `${colors.gray}${duration}ms${colors.reset}`;
-    
     console.log(`${colors.gray}[${getTimestamp()}]${colors.reset} ${method} ${path} ${statusStr} ${time}`);
   },
-
   // AI Generation Logger
   ai(action, details = {}) {
-    const { model, tokens, duration, prompt } = details;
+    const {
+      model,
+      tokens,
+      duration,
+      prompt
+    } = details;
     console.log(formatMessage("AI", "🤖", colors.magenta, action, {
       model,
       tokens,
@@ -90,19 +91,12 @@ export const logger = {
 };
 
 // Request Logging Middleware
-export function requestLogger(req, res, next) {
+function requestLogger(req, res, next) {
   const start = Date.now();
-  
   res.on("finish", () => {
     const duration = Date.now() - start;
     logger.request(req, res, duration);
   });
-  
   next();
 }
-
-export default logger;
-
-
-
-
+var _default = exports.default = logger;

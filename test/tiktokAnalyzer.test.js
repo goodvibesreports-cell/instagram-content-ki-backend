@@ -1,7 +1,9 @@
-import { test } from "node:test";
-import assert from "node:assert/strict";
-import analyzeTikTokData, { analyzeTikTokVideos } from "../utils/tiktokAnalyzer.js";
-import { parseTikTokExport } from "../utils/tiktokParser.js";
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const tiktokAnalyzer = require("../utils/tiktokAnalyzer.js");
+const analyzeTikTokData = tiktokAnalyzer.default || tiktokAnalyzer;
+const { analyzeTikTokVideos } = tiktokAnalyzer;
+const { parseTikTokExport } = require("../utils/tiktokParser.js");
 
 const samplePosts = [
   {

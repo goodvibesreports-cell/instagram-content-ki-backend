@@ -1,8 +1,8 @@
-import express from "express";
-import auth from "../middleware/auth.js";
-import { createSuccessResponse, createErrorResponse } from "../utils/errorHandler.js";
-import { logger } from "../utils/logger.js";
-import CalendarEntry from "../models/CalendarEntry.js";
+const express = require("express");
+const auth = require("../middleware/auth.js");
+const { createSuccessResponse, createErrorResponse } = require("../utils/errorHandler.js");
+const { logger } = require("../utils/logger.js");
+const CalendarEntry = require("../models/CalendarEntry.js");
 
 const router = express.Router();
 
@@ -226,7 +226,7 @@ router.post("/bulk", auth, async (req, res) => {
   }
 });
 
-export default router;
+module.exports = router;
 
 
 

@@ -1,12 +1,12 @@
-import rateLimit from "express-rate-limit";
-import { createErrorResponse } from "../utils/errorHandler.js";
+const rateLimit = require("express-rate-limit");
+const { createErrorResponse } = require("../utils/errorHandler.js");
 
 // ==============================
 // Rate Limit Konfigurationen
 // ==============================
 
 // Generelles API Rate Limit
-export const generalLimiter = rateLimit({
+const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 Minuten
   max: 100, // Max 100 Requests pro 15 Min
   message: createErrorResponse("AI_RATE_LIMITED", "Zu viele Anfragen. Bitte warte 15 Minuten."),
@@ -16,7 +16,7 @@ export const generalLimiter = rateLimit({
 });
 
 // Auth Rate Limit (strenger)
-export const authLimiter = rateLimit({
+const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 Minuten
   max: 10, // Max 10 Login/Register Versuche pro 15 Min
   message: createErrorResponse("AI_RATE_LIMITED", "Zu viele Anmeldeversuche. Bitte warte 15 Minuten."),
@@ -26,7 +26,7 @@ export const authLimiter = rateLimit({
 });
 
 // AI Generation Rate Limit
-export const aiLimiter = rateLimit({
+const aiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 Minute
   max: 10, // Max 10 AI Requests pro Minute
   message: createErrorResponse("AI_RATE_LIMITED", "Zu viele KI-Anfragen. Bitte warte eine Minute."),
@@ -35,7 +35,7 @@ export const aiLimiter = rateLimit({
 });
 
 // Upload Rate Limit
-export const uploadLimiter = rateLimit({
+const uploadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 Stunde
   max: 20, // Max 20 Uploads pro Stunde
   message: createErrorResponse("AI_RATE_LIMITED", "Zu viele Uploads. Bitte warte eine Stunde."),
@@ -44,7 +44,7 @@ export const uploadLimiter = rateLimit({
 });
 
 // Premium User Limiter (großzügiger)
-export const premiumAiLimiter = rateLimit({
+const premiumAiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 Minute
   max: 30, // 30 AI Requests pro Minute für Premium
   message: createErrorResponse("AI_RATE_LIMITED", "Rate Limit erreicht. Bitte kurz warten."),
@@ -53,7 +53,7 @@ export const premiumAiLimiter = rateLimit({
 });
 
 // Dynamischer Limiter basierend auf User-Tier
-export function dynamicLimiter(req, res, next) {
+function dynamicLimiter(req, res, next) {
   const isPremium = req.user?.premium || false;
   
   if (isPremium) {
@@ -65,7 +65,7 @@ export function dynamicLimiter(req, res, next) {
 // IP-basiertes Abuse Detection
 const suspiciousIPs = new Map();
 
-export function abuseDetection(req, res, next) {
+function abuseDetection(req, res, next) {
   const ip = req.ip || req.headers["x-forwarded-for"] || "unknown";
   const now = Date.now();
   
@@ -111,6 +111,12 @@ export function abuseDetection(req, res, next) {
   next();
 }
 
-
-
-
+module.exports = {
+  generalLimiter,
+  authLimiter,
+  aiLimiter,
+  uploadLimiter,
+  premiumAiLimiter,
+  dynamicLimiter,
+  abuseDetection
+};

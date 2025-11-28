@@ -1,6 +1,6 @@
-import { test } from "node:test";
-import assert from "node:assert/strict";
-import { detectPlatform as detectPlatformAndType, PLATFORM_DATA_TYPES } from "../utils/platformDetector.js";
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const { detectPlatform: detectPlatformAndType, PLATFORM_DATA_TYPES } = require("../utils/platformDetector.js");
 
 test("identifies TikTok posts export via Post.Posts.VideoList", () => {
   const payload = {

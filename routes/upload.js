@@ -20,6 +20,8 @@ const upload = multer({
 
 const SAFE_STREAM_THRESHOLD = 8 * 1024 * 1024;
 const SAFE_RESPONSE_MESSAGE = "File too large - metadata only";
+const MAX_ANALYSIS_ITEMS = 10_000;
+const MAX_ANALYSIS_POST_PREVIEW = 50;
 
 function rebuildTikTokVideoFromPost(post) {
   if (!post) return null;
@@ -119,6 +121,42 @@ function respondGracefully(res, { message = SAFE_RESPONSE_MESSAGE, ignoredEntrie
     ignoredEntries,
     ...extras
   });
+}
+
+function collectTikTokItems(dataset = {}) {
+  if (!dataset || typeof dataset !== "object") return [];
+  const candidateSources = [
+    Array.isArray(dataset.videos) && dataset.videos.length ? dataset.videos : null,
+    Array.isArray(dataset.posts) && dataset.posts.length ? dataset.posts : null,
+    dataset.metadata?.perPlatform?.tiktok?.items || null
+  ].filter(Boolean);
+  const rawItems = candidateSources.length ? candidateSources[0] : [];
+  if (!Array.isArray(rawItems) || !rawItems.length) {
+    return [];
+  }
+  return sanitizeItems(rawItems, "tiktok");
+}
+
+function buildTikTokAnalysisResult(items = []) {
+  const safeItems = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (!safeItems.length) {
+    return {
+      message: "Kein analysierbares TikTok-Material gefunden",
+      count: 0,
+      analysis: null,
+      posts: []
+    };
+  }
+  const workingItems =
+    safeItems.length > MAX_ANALYSIS_ITEMS ? safeItems.slice(0, MAX_ANALYSIS_ITEMS) : safeItems;
+  const analysis = analyzeTikTokVideos(workingItems);
+  const posts = workingItems.slice(0, MAX_ANALYSIS_POST_PREVIEW);
+  return {
+    message: "Analyse erfolgreich",
+    count: safeItems.length,
+    analysis,
+    posts
+  };
 }
 
 function isLikelyTikTokFile(fileName = "") {
@@ -470,11 +508,18 @@ router.get("/analysis/unified/:datasetId", optionalAuth, async (req, res) => {
 router.get("/analysis/:platform", optionalAuth, async (req, res) => {
   try {
     if (!req.user?.id) {
-      return res.status(200).json({ success: true, analysis: null, message: "Login erforderlich" });
+      return res.status(401).json({ success: false, message: "Login erforderlich" });
     }
     const platform = req.params.platform?.toLowerCase();
     if (!SUPPORTED_ANALYSIS_PLATFORMS.includes(platform)) {
-      return res.status(200).json({ success: true, analysis: null, message: "Unbekannte Plattform" });
+      return res.json({
+        success: true,
+        message: "Unbekannte Plattform",
+        datasetId: null,
+        analysis: null,
+        posts: [],
+        count: 0
+      });
     }
     const datasetId = req.query.datasetId;
     if (!datasetId) {
@@ -483,7 +528,8 @@ router.get("/analysis/:platform", optionalAuth, async (req, res) => {
         datasetId: null,
         platform,
         analysis: null,
-        videoCount: 0,
+        posts: [],
+        count: 0,
         message: "datasetId fehlt"
       });
     }
@@ -499,34 +545,24 @@ router.get("/analysis/:platform", optionalAuth, async (req, res) => {
         datasetId: null,
         platform,
         analysis: null,
-        videoCount: 0,
+        posts: [],
+        count: 0,
         message: "Dataset nicht gefunden"
       });
     }
 
     if (platform === "tiktok") {
-      let videos = Array.isArray(dataset.videos) && dataset.videos.length ? dataset.videos : [];
-      if (!videos.length && Array.isArray(dataset.posts) && dataset.posts.length) {
-        videos = dataset.posts.map(rebuildTikTokVideoFromPost).filter(Boolean);
-      }
-      const safeVideos = sanitizeItems(videos, "tiktok");
-      let tiktokAnalysis = dataset.metadata?.tiktokAnalysis;
-      if (!tiktokAnalysis) {
-        tiktokAnalysis = analyzeTikTokVideos(safeVideos);
-        dataset.metadata = dataset.metadata || {};
-        dataset.metadata.tiktokAnalysis = tiktokAnalysis;
-        if (!dataset.videos?.length) {
-          dataset.videos = safeVideos;
-        }
-        await dataset.save();
-      }
-
+      const tikTokItems = collectTikTokItems(dataset);
+      const result = buildTikTokAnalysisResult(tikTokItems);
       return res.json({
         success: true,
         datasetId,
         platform,
-        analysis: tiktokAnalysis || {},
-        videoCount: safeVideos.length
+        message: result.message,
+        count: result.count,
+        analysis: result.analysis,
+        posts: result.posts,
+        ignoredEntries: dataset.ignoredEntries || []
       });
     }
 
@@ -536,8 +572,10 @@ router.get("/analysis/:platform", optionalAuth, async (req, res) => {
         success: true,
         datasetId,
         platform,
-        analysis: {},
-        videoCount: 0
+        analysis: null,
+        posts: [],
+        count: 0,
+        message: "Kein analysierbares Material gefunden"
       });
     }
 
@@ -568,14 +606,27 @@ router.get("/analysis/:platform", optionalAuth, async (req, res) => {
       success: true,
       datasetId,
       platform,
+      message: "Analyse erfolgreich",
       analysis: formatted,
-      videoCount: posts.length
+      posts: posts.slice(0, MAX_ANALYSIS_POST_PREVIEW),
+      count: posts.length
     });
   } catch (error) {
     console.error("Analysis fetch error:", error);
-    return res.json({ success: true, analysis: null, message: error?.message || "Analyse nicht verfügbar" });
+    return res.json({
+      success: true,
+      message: "Analyse konnte nicht durchgeführt werden (interner Fallback)",
+      count: 0,
+      analysis: null,
+      posts: [],
+      error: error?.message
+    });
   }
 });
 
 module.exports = router;
+module.exports.__helpers = {
+  collectTikTokItems,
+  buildTikTokAnalysisResult
+};
 

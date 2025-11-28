@@ -1,6 +1,6 @@
-import { test } from "node:test";
-import assert from "node:assert/strict";
-import { parseYouTubeExport } from "../utils/parsers/youtubeParser.js";
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const { parseYouTubeExport } = require("../utils/parsers/youtubeParser.js");
 
 const SAMPLE_JSON = {
   items: [

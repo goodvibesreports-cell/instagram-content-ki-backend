@@ -1,7 +1,7 @@
-import express from "express";
-import { optionalAuth } from "../middleware/auth.js";
-import { generateInsightsPdf, generateInsightsCsv } from "../services/exportService.js";
-import { createErrorResponse } from "../utils/errorHandler.js";
+const express = require("express");
+const { optionalAuth } = require("../middleware/auth.js");
+const { generateInsightsPdf, generateInsightsCsv } = require("../services/exportService.js");
+const { createErrorResponse } = require("../utils/errorHandler.js");
 
 const router = express.Router();
 
@@ -29,6 +29,6 @@ router.post("/csv", optionalAuth, async (req, res) => {
   }
 });
 
-export default router;
+module.exports = router;
 
 

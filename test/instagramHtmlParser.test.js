@@ -1,6 +1,6 @@
-import { test } from "node:test";
-import assert from "node:assert/strict";
-import { parseInstagramHtml, toUnifiedItems } from "../utils/instagramHtmlParser.js";
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const { parseInstagramHtml, toUnifiedItems } = require("../utils/instagramHtmlParser.js");
 
 const SAMPLE_HTML = `
 <html>

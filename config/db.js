@@ -1,6 +1,6 @@
-import mongoose from "mongoose";
+const mongoose = require("mongoose");
 
-export const connectDB = async () => {
+const connectDB = async () => {
   try {
     // In Produktion: autoIndex deaktivieren für bessere Performance
     // Indexe sollten manuell in der DB erstellt werden
@@ -19,3 +19,5 @@ export const connectDB = async () => {
     process.exit(1);
   }
 };
+
+module.exports = { connectDB };

@@ -1,14 +1,11 @@
-import dotenv from "dotenv";
-import { Configuration, OpenAIApi } from "openai";
+require("dotenv").config();
+const OpenAI = require("openai");
 
-dotenv.config();
-
-const configuration = new Configuration({
+const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
-const openai = new OpenAIApi(configuration);
 
-export async function generateScripts(req, res) {
+async function generateScripts(req, res) {
   try {
     const { prompts } = req.body || {};
     if (!Array.isArray(prompts) || !prompts.length) {
@@ -18,7 +15,7 @@ export async function generateScripts(req, res) {
     const videoIdeas = [];
 
     for (const prompt of prompts) {
-      const response = await openai.chat.completions.create({
+      const response = await client.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
           { role: "system", content: "Du bist ein professioneller Social Media Video Creator." },
@@ -40,4 +37,6 @@ export async function generateScripts(req, res) {
     return res.status(500).json({ error: "Fehler bei der Videoideen-Generierung" });
   }
 }
+
+module.exports = { generateScripts };
 

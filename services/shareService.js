@@ -1,27 +1,33 @@
-import { randomUUID } from "crypto";
-import ShareLink from "../models/ShareLink.js";
+"use strict";
 
-export async function createShareLink(userId, payload, ttlDays = 30) {
-  const token = randomUUID();
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.createShareLink = createShareLink;
+exports.getSharePayload = getSharePayload;
+var _crypto = require("crypto");
+var _ShareLink = _interopRequireDefault(require("../models/ShareLink.js"));
+function _interopRequireDefault(e) { return e && e.__esModule ? e : { default: e }; }
+async function createShareLink(userId, payload, ttlDays = 30) {
+  const token = (0, _crypto.randomUUID)();
   const expiresAt = ttlDays ? new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000) : null;
-
-  const entry = await ShareLink.create({
+  const entry = await _ShareLink.default.create({
     userId,
     token,
     payload,
-    ...(expiresAt ? { expiresAt } : {})
+    ...(expiresAt ? {
+      expiresAt
+    } : {})
   });
-
   return entry;
 }
-
-export async function getSharePayload(token) {
-  const entry = await ShareLink.findOne({ token });
+async function getSharePayload(token) {
+  const entry = await _ShareLink.default.findOne({
+    token
+  });
   if (!entry) return null;
   if (entry.expiresAt && entry.expiresAt < new Date()) {
     return null;
   }
   return entry.payload;
 }
-
-

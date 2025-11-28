@@ -1,7 +1,8 @@
-import { test } from "node:test";
-import assert from "node:assert/strict";
-import analyzeUnifiedItems from "../utils/unifiedAnalyzer.js";
-import { createNormalizedPost } from "../utils/normalizedPost.js";
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const unifiedAnalyzer = require("../utils/unifiedAnalyzer.js");
+const analyzeUnifiedItems = unifiedAnalyzer.default || unifiedAnalyzer;
+const { createNormalizedPost } = require("../utils/normalizedPost.js");
 
 function makeItem(overrides = {}) {
   return createNormalizedPost({

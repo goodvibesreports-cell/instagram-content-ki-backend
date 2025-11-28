@@ -1,35 +1,41 @@
-import mongoose from "mongoose";
+"use strict";
 
-const postSchema = new mongoose.Schema({
-  userId: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: "User", 
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+var _mongoose = _interopRequireDefault(require("mongoose"));
+function _interopRequireDefault(e) { return e && e.__esModule ? e : { default: e }; }
+const postSchema = new _mongoose.default.Schema({
+  userId: {
+    type: _mongoose.default.Schema.Types.ObjectId,
+    ref: "User",
     required: true,
     index: true
   },
-  content: { 
-    type: String, 
-    required: true 
+  content: {
+    type: String,
+    required: true
   },
-  caption: { 
-    type: String 
+  caption: {
+    type: String
   },
-  hashtags: [{ 
-    type: String 
+  hashtags: [{
+    type: String
   }],
-  likes: { 
-    type: Number, 
-    default: 0 
+  likes: {
+    type: Number,
+    default: 0
   },
-  comments: { 
-    type: Number, 
-    default: 0 
+  comments: {
+    type: Number,
+    default: 0
   },
-  engagement: { 
-    type: Number, 
-    default: 0 
+  engagement: {
+    type: Number,
+    default: 0
   },
-  category: { 
+  category: {
     type: String,
     default: "general"
   },
@@ -39,19 +45,19 @@ const postSchema = new mongoose.Schema({
     default: "upload"
   },
   metadata: {
-    type: mongoose.Schema.Types.Mixed,
+    type: _mongoose.default.Schema.Types.Mixed,
     default: {}
   }
-}, { 
-  timestamps: true 
+}, {
+  timestamps: true
 });
 
 // Index für schnelle Abfragen
-postSchema.index({ userId: 1, createdAt: -1 });
-postSchema.index({ category: 1 });
-
-export default mongoose.model("Post", postSchema);
-
-
-
-
+postSchema.index({
+  userId: 1,
+  createdAt: -1
+});
+postSchema.index({
+  category: 1
+});
+var _default = exports.default = _mongoose.default.model("Post", postSchema);

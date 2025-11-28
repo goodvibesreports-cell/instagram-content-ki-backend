@@ -1,21 +1,18 @@
-import dotenv from "dotenv";
-import { Configuration, OpenAIApi } from "openai";
+require("dotenv").config();
+const OpenAI = require("openai");
 
-dotenv.config();
-
-const configuration = new Configuration({
+const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
-const openai = new OpenAIApi(configuration);
 
-export async function generatePrompt(req, res) {
+async function generatePrompt(req, res) {
   try {
     const data = req.body || {};
     if (!Object.keys(data).length) {
       return res.status(400).json({ error: "Keine Daten übergeben" });
     }
 
-    const response = await openai.chat.completions.create({
+    const response = await client.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: "Du bist ein professioneller Social Media Content Creator." },
@@ -31,4 +28,6 @@ export async function generatePrompt(req, res) {
     return res.status(500).json({ error: "Fehler bei der Prompt-Generierung" });
   }
 }
+
+module.exports = { generatePrompt };
 

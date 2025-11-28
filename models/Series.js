@@ -1,6 +1,12 @@
-import mongoose from "mongoose";
+"use strict";
 
-const episodeSchema = new mongoose.Schema({
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+var _mongoose = _interopRequireDefault(require("mongoose"));
+function _interopRequireDefault(e) { return e && e.__esModule ? e : { default: e }; }
+const episodeSchema = new _mongoose.default.Schema({
   title: String,
   hook: String,
   idea: String,
@@ -10,16 +16,23 @@ const episodeSchema = new mongoose.Schema({
     default: "planned"
   },
   callToAction: String
-}, { _id: true });
-
-const seriesSchema = new mongoose.Schema({
+}, {
+  _id: true
+});
+const seriesSchema = new _mongoose.default.Schema({
   userId: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: _mongoose.default.Schema.Types.ObjectId,
     ref: "User",
     required: true
   },
-  title: { type: String, required: true },
-  description: { type: String, default: "" },
+  title: {
+    type: String,
+    required: true
+  },
+  description: {
+    type: String,
+    default: ""
+  },
   platform: {
     type: String,
     enum: ["instagram", "tiktok", "youtube", "twitter", "linkedin"],
@@ -31,7 +44,7 @@ const seriesSchema = new mongoose.Schema({
     default: "active"
   },
   episodes: [episodeSchema]
-}, { timestamps: true });
-
-export default mongoose.model("Series", seriesSchema);
-
+}, {
+  timestamps: true
+});
+var _default = exports.default = _mongoose.default.model("Series", seriesSchema);

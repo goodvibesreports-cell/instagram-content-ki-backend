@@ -1,16 +1,18 @@
-import express from "express";
-import auth, { optionalAuth } from "../middleware/auth.js";
-import { dynamicLimiter } from "../middleware/rateLimiter.js";
-import { validate } from "../validators/schemas.js";
-import {
+const express = require("express");
+const authMiddleware = require("../middleware/auth.js");
+const auth = authMiddleware;
+const optionalAuth = authMiddleware.optionalAuth;
+const { dynamicLimiter } = require("../middleware/rateLimiter.js");
+const { validate } = require("../validators/schemas.js");
+const {
   generateHooksSchema,
   generateCaptionsSchema,
   generateTitleSchema,
   trendAnalysisSchema,
   viralityAnalysisSchema,
   insightSummarySchema
-} from "../validators/schemas.js";
-import {
+} = require("../validators/schemas.js");
+const {
   generateHooks,
   generateCaptions,
   generateTitles,
@@ -18,11 +20,11 @@ import {
   analyzeVirality,
   summarizeTikTokInsights,
   CREDIT_COSTS
-} from "../services/aiService.js";
-import { createSuccessResponse, createErrorResponse } from "../utils/errorHandler.js";
-import { logger } from "../utils/logger.js";
-import User from "../models/User.js";
-import GeneratedContent from "../models/GeneratedContent.js";
+} = require("../services/aiService.js");
+const { createSuccessResponse, createErrorResponse } = require("../utils/errorHandler.js");
+const { logger } = require("../utils/logger.js");
+const User = require("../models/User.js");
+const GeneratedContent = require("../models/GeneratedContent.js");
 
 const router = express.Router();
 
@@ -289,5 +291,5 @@ router.get("/costs", (req, res) => {
   }));
 });
 
-export default router;
+module.exports = router;
 

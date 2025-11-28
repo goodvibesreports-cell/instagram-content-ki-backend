@@ -1,4 +1,4 @@
-import { z } from "zod";
+const { z } = require("zod");
 
 const PLATFORM_ENUM = ["instagram", "tiktok", "youtube", "twitter", "linkedin"];
 const HOOK_STYLES = ["mixed", "question", "statement", "shocking", "story"];
@@ -8,25 +8,25 @@ const TREND_PLATFORMS = ["instagram", "tiktok", "youtube", "twitter", "linkedin"
 const TREND_TIMEFRAMES = ["today", "week", "month"];
 const VIRALITY_TYPES = ["hook", "caption", "script", "full"];
 
-export const registerSchema = z.object({
+const registerSchema = z.object({
   email: z.string().email().transform((v) => v.toLowerCase().trim()),
   password: z.string().min(8)
 });
 
-export const testAccountSchema = registerSchema.extend({
+const testAccountSchema = registerSchema.extend({
   credits: z.coerce.number().int().min(0).max(1000000).optional()
 });
 
-export const loginSchema = z.object({
+const loginSchema = z.object({
   email: z.string().email().transform((v) => v.toLowerCase().trim()),
   password: z.string().min(1)
 });
 
-export const refreshTokenSchema = z.object({
+const refreshTokenSchema = z.object({
   refreshToken: z.string().min(40, "Refresh Token ist ungültig")
 });
 
-export const logoutSchema = z.object({
+const logoutSchema = z.object({
   refreshToken: z.string().min(40, "Refresh Token ist ungültig").optional(),
   fromAllDevices: z.boolean().optional().default(false)
 }).refine((value) => Boolean(value.refreshToken) || value.fromAllDevices === true, {
@@ -34,20 +34,20 @@ export const logoutSchema = z.object({
   path: ["refreshToken"]
 });
 
-export const changePasswordSchema = z.object({
+const changePasswordSchema = z.object({
   currentPassword: z.string().min(8, "Aktuelles Passwort ist erforderlich"),
   newPassword: z.string().min(8, "Neues Passwort muss mindestens 8 Zeichen lang sein")
 });
 
-export const verifySchema = z.object({
+const verifySchema = z.object({
   token: z.string().min(10)
 });
 
-export const platformModeSchema = z.object({
+const platformModeSchema = z.object({
   platform: z.enum(PLATFORM_ENUM)
 });
 
-export const creatorProfileSchema = z.object({
+const creatorProfileSchema = z.object({
   niche: z.string().min(3),
   toneOfVoice: z.string().min(3),
   targetAudience: z.string().optional(),
@@ -58,18 +58,18 @@ export const creatorProfileSchema = z.object({
   creatorStatement: z.string().optional()
 });
 
-export const generatePromptsSchema = z.object({
+const generatePromptsSchema = z.object({
   topic: z.string().min(3),
   platform: z.enum(PLATFORM_ENUM),
   count: z.coerce.number().min(1).max(10).default(5)
 });
 
-export const generateVideoIdeasSchema = z.object({
+const generateVideoIdeasSchema = z.object({
   prompt: z.string().min(5),
   platform: z.enum(PLATFORM_ENUM)
 });
 
-export const analysisSchema = z.object({
+const analysisSchema = z.object({
   platform: z.enum(PLATFORM_ENUM),
   caption: z.string().min(10),
   metrics: z.object({
@@ -80,19 +80,19 @@ export const analysisSchema = z.object({
   }).optional()
 });
 
-export const seriesSchema = z.object({
+const seriesSchema = z.object({
   topic: z.string().min(3),
   platform: z.enum(PLATFORM_ENUM),
   episodes: z.coerce.number().min(5).max(30).default(10)
 });
 
-export const episodeStatusSchema = z.object({
+const episodeStatusSchema = z.object({
   seriesId: z.string(),
   episodeId: z.string(),
   status: z.enum(["planned", "in_progress", "published", "analyzing"])
 });
 
-export const performanceSchema = z.object({
+const performanceSchema = z.object({
   episodeId: z.string(),
   seriesId: z.string(),
   views: z.coerce.number().nonnegative(),
@@ -101,7 +101,7 @@ export const performanceSchema = z.object({
   saves: z.coerce.number().nonnegative()
 });
 
-export const historyQuerySchema = z.object({
+const historyQuerySchema = z.object({
   type: z.enum(["analysis", "prompt", "script", "series"]).optional(),
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).max(50).default(20)
@@ -123,19 +123,19 @@ const uploadPostItemSchema = z.object({
   message: "Jeder Post benötigt mindestens ein Textfeld (content/text/caption/description)"
 });
 
-export const uploadPostsSchema = z.array(uploadPostItemSchema).min(1).max(500);
+const uploadPostsSchema = z.array(uploadPostItemSchema).min(1).max(500);
 
 // ==============================
 // Advanced AI Schemas
 // ==============================
 
-export const generateHooksSchema = z.object({
+const generateHooksSchema = z.object({
   topic: z.string().min(3),
   count: z.coerce.number().min(1).max(20).default(10),
   style: z.enum(HOOK_STYLES).default("mixed")
 });
 
-export const generateCaptionsSchema = z.object({
+const generateCaptionsSchema = z.object({
   topic: z.string().min(3),
   tone: z.enum(CAPTION_TONES).default("casual"),
   includeEmojis: z.boolean().optional().default(true),
@@ -143,24 +143,24 @@ export const generateCaptionsSchema = z.object({
   count: z.coerce.number().min(1).max(10).default(3)
 });
 
-export const generateTitleSchema = z.object({
+const generateTitleSchema = z.object({
   topic: z.string().min(3),
   style: z.enum(TITLE_STYLES).default("clickbait"),
   count: z.coerce.number().min(1).max(20).default(5)
 });
 
-export const trendAnalysisSchema = z.object({
+const trendAnalysisSchema = z.object({
   niche: z.string().min(3),
   platform: z.enum(TREND_PLATFORMS).default("instagram"),
   timeframe: z.enum(TREND_TIMEFRAMES).default("week")
 });
 
-export const viralityAnalysisSchema = z.object({
+const viralityAnalysisSchema = z.object({
   content: z.string().min(20),
   type: z.enum(VIRALITY_TYPES).default("full")
 });
 
-export const insightSummarySchema = z.object({
+const insightSummarySchema = z.object({
   analysis: z.object({
     stats: z.object({
       totalPosts: z.number().nonnegative().optional(),
@@ -191,7 +191,7 @@ export const insightSummarySchema = z.object({
   }).optional()
 });
 
-export function validate(schema) {
+function validate(schema) {
   return (req, res, next) => {
     const parsed = schema.safeParse({
       ...req.body,
@@ -213,3 +213,30 @@ export function validate(schema) {
     next();
   };
 }
+
+module.exports = {
+  registerSchema,
+  testAccountSchema,
+  loginSchema,
+  refreshTokenSchema,
+  logoutSchema,
+  changePasswordSchema,
+  verifySchema,
+  platformModeSchema,
+  creatorProfileSchema,
+  generatePromptsSchema,
+  generateVideoIdeasSchema,
+  analysisSchema,
+  seriesSchema,
+  episodeStatusSchema,
+  performanceSchema,
+  historyQuerySchema,
+  uploadPostsSchema,
+  generateHooksSchema,
+  generateCaptionsSchema,
+  generateTitleSchema,
+  trendAnalysisSchema,
+  viralityAnalysisSchema,
+  insightSummarySchema,
+  validate
+};

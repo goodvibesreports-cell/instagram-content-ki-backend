@@ -1,3 +1,13 @@
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.SUPPORTED_PLATFORMS = void 0;
+exports.clampPlatform = clampPlatform;
+exports.createNormalizedPost = createNormalizedPost;
+exports.ensureArray = ensureArray;
+exports.normalizedFromTikTokVideo = normalizedFromTikTokVideo;
 /**
  * @typedef {Object} NormalizedPost
  * @property {string} id
@@ -32,18 +42,14 @@
  * @property {Record<string, any>} [meta]
  */
 
-export const SUPPORTED_PLATFORMS = ["tiktok", "instagram", "facebook"];
-
-export function createNormalizedPost(overrides = {}) {
+const SUPPORTED_PLATFORMS = exports.SUPPORTED_PLATFORMS = ["tiktok", "instagram", "facebook"];
+function createNormalizedPost(overrides = {}) {
   const fallbackId = `post-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const resolvedDate = overrides.date || new Date().toISOString();
-  const resolvedTimestamp =
-    typeof overrides.timestamp === "number"
-      ? overrides.timestamp
-      : (() => {
-          const parsed = new Date(resolvedDate);
-          return Number.isNaN(parsed.getTime()) ? Date.now() : parsed.getTime();
-        })();
+  const resolvedTimestamp = typeof overrides.timestamp === "number" ? overrides.timestamp : (() => {
+    const parsed = new Date(resolvedDate);
+    return Number.isNaN(parsed.getTime()) ? Date.now() : parsed.getTime();
+  })();
   return {
     id: overrides.id || overrides.link || fallbackId,
     platform: overrides.platform || "tiktok",
@@ -64,18 +70,15 @@ export function createNormalizedPost(overrides = {}) {
     meta: overrides.meta || {}
   };
 }
-
-export function ensureArray(value) {
+function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
-
-export function clampPlatform(value) {
+function clampPlatform(value) {
   if (!value || typeof value !== "string") return "tiktok";
   const normalized = value.toLowerCase();
   return SUPPORTED_PLATFORMS.includes(normalized) ? normalized : "tiktok";
 }
-
-export function normalizedFromTikTokVideo(video) {
+function normalizedFromTikTokVideo(video) {
   if (!video) return null;
   return createNormalizedPost({
     id: video.externalId,
@@ -105,4 +108,3 @@ export function normalizedFromTikTokVideo(video) {
     }
   });
 }
-

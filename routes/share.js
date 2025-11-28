@@ -1,7 +1,7 @@
-import express from "express";
-import auth from "../middleware/auth.js";
-import { createShareLink, getSharePayload } from "../services/shareService.js";
-import { createErrorResponse, createSuccessResponse } from "../utils/errorHandler.js";
+const express = require("express");
+const auth = require("../middleware/auth.js");
+const { createShareLink, getSharePayload } = require("../services/shareService.js");
+const { createErrorResponse, createSuccessResponse } = require("../utils/errorHandler.js");
 
 const router = express.Router();
 
@@ -39,6 +39,6 @@ router.get("/:token", async (req, res) => {
   }
 });
 
-export default router;
+module.exports = router;
 
 

@@ -1,11 +1,11 @@
-import Series from "../models/Series.js";
-import SeriesPerformance from "../models/SeriesPerformance.js";
-import History from "../models/History.js";
-import { generateSeriesBlueprint, calculateMomentum } from "../services/aiService.js";
-import { getCreatorProfile } from "../services/creatorService.js";
-import { createSuccessResponse } from "../utils/errorHandler.js";
+const Series = require("../models/Series.js");
+const SeriesPerformance = require("../models/SeriesPerformance.js");
+const History = require("../models/History.js");
+const { generateSeriesBlueprint, calculateMomentum } = require("../services/aiService.js");
+const { getCreatorProfile } = require("../services/creatorService.js");
+const { createSuccessResponse } = require("../utils/errorHandler.js");
 
-export async function createSeries(req, res, next) {
+async function createSeries(req, res, next) {
   try {
     const profile = await getCreatorProfile(req.user.id);
     const blueprint = await generateSeriesBlueprint(req.userDoc, profile, req.validated);
@@ -43,7 +43,7 @@ export async function createSeries(req, res, next) {
   }
 }
 
-export async function listSeries(req, res, next) {
+async function listSeries(req, res, next) {
   try {
     const series = await Series.find({ userId: req.user.id }).sort({ updatedAt: -1 });
     res.json(createSuccessResponse({ series }));
@@ -52,7 +52,7 @@ export async function listSeries(req, res, next) {
   }
 }
 
-export async function updateEpisodeStatus(req, res, next) {
+async function updateEpisodeStatus(req, res, next) {
   try {
     const { seriesId, episodeId, status } = req.validated;
     const series = await Series.findOne({ _id: seriesId, userId: req.user.id });
@@ -75,7 +75,7 @@ export async function updateEpisodeStatus(req, res, next) {
   }
 }
 
-export async function addPerformance(req, res, next) {
+async function addPerformance(req, res, next) {
   try {
     const perf = await SeriesPerformance.create({
       userId: req.user.id,
@@ -87,4 +87,11 @@ export async function addPerformance(req, res, next) {
     next(err);
   }
 }
+
+module.exports = {
+  createSeries,
+  listSeries,
+  updateEpisodeStatus,
+  addPerformance
+};
 

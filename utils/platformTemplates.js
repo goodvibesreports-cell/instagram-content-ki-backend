@@ -1,4 +1,10 @@
-export const PLATFORM_TEMPLATES = {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.PLATFORM_TEMPLATES = void 0;
+const PLATFORM_TEMPLATES = exports.PLATFORM_TEMPLATES = {
   instagram: {
     label: "Instagram Reels",
     prompt: `Sprache: Deutsch, Tempo hoch, Jump-Cuts.
@@ -23,4 +29,3 @@ Call-To-Action auf Kanal/Playlist.`
     prompt: `Professionell, Mehrwert, Business Cases, CTA: Insights teilen oder diskutieren.`
   }
 };
-

@@ -1,9 +1,9 @@
-import express from "express";
-import auth from "../middleware/auth.js";
-import { createSuccessResponse, createErrorResponse } from "../utils/errorHandler.js";
-import { logger } from "../utils/logger.js";
-import Organization from "../models/Organization.js";
-import User from "../models/User.js";
+const express = require("express");
+const auth = require("../middleware/auth.js");
+const { createSuccessResponse, createErrorResponse } = require("../utils/errorHandler.js");
+const { logger } = require("../utils/logger.js");
+const Organization = require("../models/Organization.js");
+const User = require("../models/User.js");
 
 const router = express.Router();
 
@@ -281,7 +281,7 @@ router.delete("/", auth, async (req, res) => {
   }
 });
 
-export default router;
+module.exports = router;
 
 
 

@@ -1,6 +1,6 @@
-import { test } from "node:test";
-import assert from "node:assert/strict";
-import { parseTikTokExport, extractVideoLinksFromAnyObject } from "../utils/tiktokParser.js";
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const { parseTikTokExport, extractVideoLinksFromAnyObject } = require("../utils/tiktokParser.js");
 
 test("detects multiple video sections and normalizes entries", () => {
   const json = {

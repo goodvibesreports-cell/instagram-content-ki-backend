@@ -1,7 +1,7 @@
-import { test } from "node:test";
-import assert from "node:assert/strict";
-import AdmZip from "adm-zip";
-import { processUploadBuffer } from "../utils/multiPlatformEngine.js";
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const AdmZip = require("adm-zip");
+const { processUploadBuffer } = require("../utils/multiPlatformEngine.js");
 
 function bufferFromJson(json, name = "data.json") {
   const buffer = Buffer.from(JSON.stringify(json, null, 2));
