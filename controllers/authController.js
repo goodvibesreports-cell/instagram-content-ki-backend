@@ -58,6 +58,7 @@ function sanitizeUserPayload(user) {
   return {
     id,
     email: source.email,
+    tier: source.tier || source.plan || "basic",
     verified: Boolean(source.verified),
     platformMode: source.platformMode || "tiktok",
     credits,
@@ -113,14 +114,20 @@ async function login(req, res, next) {
   try {
     const payload = await loginUser(req.validated, getSessionMeta(req));
     const tokens = {
-      accessToken: payload?.tokens?.accessToken || null,
-      refreshToken: payload?.tokens?.refreshToken || null,
-      expiresIn: payload?.tokens?.expiresIn ?? null,
+      accessToken: payload?.tokens?.accessToken || "",
+      refreshToken: payload?.tokens?.refreshToken || "",
+      expiresIn: payload?.tokens?.expiresIn ?? 3600,
       refreshExpiresAt: payload?.tokens?.refreshExpiresAt || null
     };
+    if (!tokens.accessToken || !tokens.refreshToken) {
+      const error = new Error("Token generation failed");
+      error.status = 500;
+      throw error;
+    }
+    const user = sanitizeUserPayload(payload?.user);
     res.json({
       success: true,
-      user: payload?.user || null,
+      user,
       tokens
     });
   } catch (err) {
@@ -130,10 +137,16 @@ async function login(req, res, next) {
 
 async function me(req, res, next) {
   try {
-    if (!req.user) {
+    const baseUser =
+      req.userDoc ||
+      (req.user?.id ? await getCurrentUser(req.user.id) : null);
+
+    if (!baseUser) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
-    res.json({ success: true, user: req.user });
+
+    const user = sanitizeUserPayload(baseUser);
+    res.json({ success: true, user });
   } catch (err) {
     next(err);
   }
