@@ -37,17 +37,19 @@ function bufferFromZip(entries, name = "bundle.zip") {
 
 function createTikTokJson(count = 1) {
   return {
-    Post: {
-      Posts: {
-        VideoList: Array.from({ length: count }, (_, index) => {
-          const id = index + 1;
-          return {
-            Date: `2025-01-${String(((index % 28) + 1)).padStart(2, "0")} ${String(index % 24).padStart(2, "0")}:00:00`,
-            Link: `https://www.tiktok.com/@creator/video/${id}`,
-            Likes: `${id * 10}`,
-            Caption: `Video ${id}`
-          };
-        })
+    TikTok: {
+      "Your Public Activity": {
+        Videos: {
+          VideoList: Array.from({ length: count }, (_, index) => {
+            const id = index + 1;
+            return {
+              Date: `2025-01-${String(((index % 28) + 1)).padStart(2, "0")} ${String(index % 24).padStart(2, "0")}:00:00`,
+              Link: `https://www.tiktok.com/@creator/video/${id}`,
+              Likes: `${id * 10}`,
+              Title: `Video ${id}`
+            };
+          })
+        }
       }
     }
   };
@@ -82,8 +84,10 @@ const YOUTUBE_JSON = {
 };
 
 const WATCH_HISTORY_JSON = {
-  WatchHistory: {
-    VideoList: [{ Date: "2025-03-01 10:00:00", Link: "https://www.tiktok.com/@watch/video/1" }]
+  TikTok: {
+    "Watch History": {
+      VideoList: [{ Date: "2025-03-01 10:00:00", Link: "https://www.tiktok.com/@watch/video/1" }]
+    }
   }
 };
 

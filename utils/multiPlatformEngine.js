@@ -151,12 +151,20 @@ function normalizeItem(entry = {}, platform = "unknown", fileName = "") {
     sourceFile: normalized.meta?.sourceFile || entry.sourceFile || fileName,
     originType: normalized.meta?.originType || entry.originType || entry.meta?.originType || "posted"
   };
-  if (meta.raw) {
-    delete meta.raw;
-  }
-  const snippet = buildSnippet(entry.meta?.raw || entry.raw || entry);
-  if (snippet) {
-    meta.snippet = snippet;
+  const rawPayload = entry.meta?.raw ?? entry.raw ?? null;
+  if (rawPayload) {
+    let snippet;
+    if (typeof rawPayload === "string") {
+      snippet = rawPayload.slice(0, SNIPPET_CHAR_LIMIT);
+    } else {
+      snippet = buildSnippet(rawPayload);
+      if (snippet) {
+        snippet = snippet.slice(0, SNIPPET_CHAR_LIMIT);
+      }
+    }
+    if (snippet) {
+      meta.raw = snippet;
+    }
   }
   normalized.meta = meta;
   return normalized;
@@ -214,23 +222,40 @@ function filterRelevantData(payload, platform, fileName = "", options = {}) {
   const flags = {};
   const rawSnippet = buildSnippet(payload);
   const normalizedItems = [];
-  const followerEvents = [];
+  const followers = [];
   switch (platform) {
     case "tiktok":
       {
         if (typeof payload !== "object") break;
         const parsed = (0, _tiktokParser.parseTikTokExport)(payload, fileName);
-        flags.hasWatchHistory = (parsed.totals?.watchHistory || 0) > 0;
-        if (Array.isArray(parsed.followers)) {
-          followerEvents.push(...parsed.followers);
-        }
-        parsed.videos.map(video => (0, _normalizedPost.normalizedFromTikTokVideo)({
-          ...video,
-          sourceFile: fileName
-        })).forEach(item => {
-          const normalized = normalizeItem(item, "tiktok");
+        flags.hasWatchHistory = flags.hasWatchHistory || Boolean(parsed.ignoredEntries?.some(entry => entry.section?.toLowerCase().includes("watch")));
+        parsed.posts.forEach(video => {
+          const normalized = normalizeItem({
+            platform: "tiktok",
+            id: video.id || video.link,
+            link: video.link || "",
+            date: video.date || null,
+            timestamp: video.date ? new Date(video.date).getTime() : undefined,
+            likes: Number(video.likes || 0),
+            comments: Number(video.comments || 0),
+            shares: Number(video.shares || 0),
+            views: Number(video.views || 0),
+            caption: video.caption || video.title || "",
+            title: video.title || "",
+            hashtags: extractHashtagsFromText(video.caption || video.title || ""),
+            soundOrAudio: video.sound || "",
+            location: video.location || "",
+            coverImage: video.coverImage || "",
+            meta: {
+              sourceFile: fileName,
+              raw: video.meta?.raw || null
+            }
+          }, "tiktok", fileName);
           if (normalized) normalizedItems.push(normalized);
         });
+        if (Array.isArray(parsed.followers) && parsed.followers.length) {
+          followers.push(...parsed.followers);
+        }
         ignored.push(...(parsed.ignoredEntries || []));
         break;
       }
@@ -309,7 +334,7 @@ function filterRelevantData(payload, platform, fileName = "", options = {}) {
   });
   return {
     items: filteredItems,
-    followers: followerEvents,
+    followers,
     ignored,
     rawSnippet,
     flags

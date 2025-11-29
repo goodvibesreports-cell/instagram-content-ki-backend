@@ -74,7 +74,6 @@ function sanitizeItems(items = [], fallbackPlatform = "unknown") {
     const normalizedHashtags = [...new Set(hashtags.map((tag) => tag.replace("#", "").toLowerCase()).filter(Boolean))];
     const timestamp = isoDate ? new Date(isoDate).getTime() : Number(item.timestamp) || null;
     const meta = { ...(item.meta || {}) };
-    if (meta.raw) delete meta.raw;
     const sound = item.sound || item.soundOrAudio || meta.sound || "";
     return {
       id: item.id || item.link || `item-${index}`,
@@ -102,16 +101,20 @@ function sanitizeItems(items = [], fallbackPlatform = "unknown") {
 function sanitizeFollowers(entries = []) {
   return entries
     .map((entry) => {
-      const isoDate = toIsoDate(entry.date || entry.timestamp);
-      if (!isoDate) return null;
-      const timestamp = new Date(isoDate).getTime();
-      if (!timestamp || Number.isNaN(timestamp)) return null;
+      if (!entry) return null;
+      const rawTimestamp =
+        typeof entry.timestamp === "number" && Number.isFinite(entry.timestamp)
+          ? entry.timestamp
+          : Date.parse(entry.date || entry.Date || entry.created || "");
+      if (!Number.isFinite(rawTimestamp)) {
+        return null;
+      }
       return {
-        username: entry.username || entry.name || "Follower",
-        userId: entry.userId || entry.id || null,
-        avatar: entry.avatar || null,
-        date: isoDate,
-        timestamp
+        username: entry.username || entry.UserName || entry.NickName || "Follower",
+        userId: entry.userId || entry.UserId || null,
+        avatar: entry.avatar || entry.Avatar || null,
+        date: new Date(rawTimestamp).toISOString(),
+        timestamp: rawTimestamp
       };
     })
     .filter(Boolean);
@@ -260,6 +263,7 @@ async function parseWithSafeTikTokParser(file, sourceType = "upload-single") {
   ];
   return {
     items,
+    followers: result.followers || [],
     ignoredEntries,
     rawFilesMeta,
     perPlatform,
@@ -278,6 +282,7 @@ async function parseWithSafeTikTokParser(file, sourceType = "upload-single") {
 async function parseFolderWithSafeTikTok(files = []) {
   const aggregate = {
     items: [],
+    followers: [],
     ignoredEntries: [],
     rawFilesMeta: [],
     perPlatform: {
@@ -305,8 +310,12 @@ async function parseFolderWithSafeTikTok(files = []) {
     });
 
     const items = parsed.posts || [];
+    const followerEvents = parsed.followers || [];
     const ignored = parsed.ignored || [];
     aggregate.items.push(...items);
+    if (followerEvents.length) {
+      aggregate.followers.push(...followerEvents);
+    }
     aggregate.ignoredEntries.push(
       ...ignored.map((entry) => ({
         ...entry,
@@ -335,7 +344,7 @@ async function parseFolderWithSafeTikTok(files = []) {
   return aggregate;
 }
 
-async function persistDataset({ sanitizedItems, sanitizedFollowers, aggregate, userId, sourceInfo, analysis }) {
+async function persistDataset({ sanitizedItems, sanitizedFollowers = [], aggregate, userId, sourceInfo, analysis }) {
   const dataset = await UploadDataset.create({
     userId: userId || null,
     platform: aggregate.primaryPlatform || "unknown",
@@ -349,8 +358,9 @@ async function persistDataset({ sanitizedItems, sanitizedFollowers, aggregate, u
       posts: sanitizedItems.length,
       links: sanitizedItems.length
     },
-    posts: [],
+    posts: sanitizedItems,
     videos: sanitizedItems,
+    followers: sanitizedFollowers,
     rawFilesMeta: mapRawFilesMeta(aggregate.rawFilesMeta),
     ignoredEntries: aggregate.ignoredEntries || [],
     metadata: {
@@ -359,8 +369,7 @@ async function persistDataset({ sanitizedItems, sanitizedFollowers, aggregate, u
       summary: aggregate.summary,
       flags: aggregate.flags,
       followers: {
-        total: sanitizedFollowers.length,
-        events: sanitizedFollowers
+        total: sanitizedFollowers.length
       }
     }
   });
@@ -414,6 +423,7 @@ router.post("/", auth, upload.single("file"), async (req, res) => {
 
     const dataset = await persistDataset({
       sanitizedItems,
+      sanitizedFollowers,
       aggregate,
       userId: req.user?.id || null,
       sourceInfo: {
@@ -421,8 +431,7 @@ router.post("/", auth, upload.single("file"), async (req, res) => {
         fileSize: req.file.size,
         sourceType: "upload-single"
       },
-      analysis,
-      sanitizedFollowers
+      analysis
     });
 
     const responsePayload = buildSuccessResponse(dataset?._id, aggregate, sanitizedItems, perPlatform);
@@ -471,6 +480,7 @@ router.post("/folder", auth, upload.array("files"), async (req, res) => {
 
     const dataset = await persistDataset({
       sanitizedItems,
+      sanitizedFollowers,
       aggregate,
       userId: req.user?.id || null,
       sourceInfo: {
@@ -478,8 +488,7 @@ router.post("/folder", auth, upload.array("files"), async (req, res) => {
         fileSize: totalSize,
         sourceType: "upload-folder"
       },
-      analysis,
-      sanitizedFollowers
+      analysis
     });
 
     const responsePayload = buildSuccessResponse(dataset?._id, aggregate, sanitizedItems, perPlatform);
@@ -559,8 +568,8 @@ router.get("/analysis/unified/:datasetId", auth, async (req, res) => {
     }
 
     const range = parseDateRange(req.query || {});
-    const items = Array.isArray(dataset.videos) ? dataset.videos : [];
-    const followers = Array.isArray(dataset.metadata?.followers?.events) ? dataset.metadata.followers.events : [];
+    const items = Array.isArray(dataset.posts) && dataset.posts.length ? dataset.posts : Array.isArray(dataset.videos) ? dataset.videos : [];
+    const followers = Array.isArray(dataset.followers) ? dataset.followers : [];
     const scopedItems = filterItemsByDate(items, range);
     const scopedFollowers = filterItemsByDate(followers, range);
     const analysis = analyzeUnifiedItems(scopedItems, scopedFollowers);

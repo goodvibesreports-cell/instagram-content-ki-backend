@@ -30,4 +30,22 @@ test("analyzeUnifiedItems liefert globale und plattformspezifische KPIs", () => 
   assert.equal(result.perPlatform.tiktok.topHashtags[0].hashtag, "creator");
 });
 
+test("analyzeUnifiedItems aggregiert Follower-Daten", () => {
+  const items = [
+    makeItem({ platform: "tiktok", date: "2025-02-01T10:00:00Z", caption: "Post A" }),
+    makeItem({ platform: "tiktok", date: "2025-02-02T10:00:00Z", caption: "Post B" })
+  ];
+  const followers = [
+    { date: "2025-02-01T11:00:00Z" },
+    { date: "2025-02-01T12:00:00Z" },
+    { date: "2025-02-02T11:30:00Z" }
+  ];
+  const result = analyzeUnifiedItems(items, followers);
+  assert.ok(result.follower);
+  assert.equal(result.follower.totalFollowers, 3);
+  assert.ok(result.follower.followerTimeline.length >= 2);
+  assert.ok(result.follower.postGains.length >= 1);
+  assert.equal(result.follower.postGains[0].followersGained, 2);
+});
+
 

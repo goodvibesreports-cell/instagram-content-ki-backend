@@ -7,7 +7,7 @@ exports.normalizeTikTokJson = normalizeTikTokJson;
 var _tiktokParser = require("./tiktokParser.js");
 function normalizeTikTokJson(json, sourceFileName = "unknown") {
   const result = (0, _tiktokParser.parseTikTokExport)(json, sourceFileName);
-  const videos = result.videos || [];
+  const videos = result.posts || [];
   const deletedCount = videos.filter(video => video.isDeleted).length;
   return {
     videos,
@@ -15,3 +15,4 @@ function normalizeTikTokJson(json, sourceFileName = "unknown") {
     ignoredEntries: result.ignoredEntries || []
   };
 }
+

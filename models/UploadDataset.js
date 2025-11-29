@@ -6,6 +6,8 @@ const uploadDatasetSchema = new mongoose.Schema(
     rawPlatform: { type: String, default: "unknown" },
     sourceType: { type: String, default: "upload" },
     rawJsonSnippet: { type: mongoose.Schema.Types.Mixed, default: null },
+    posts: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    followers: { type: [mongoose.Schema.Types.Mixed], default: [] },
     videos: { type: [mongoose.Schema.Types.Mixed], default: [] },
     ignoredEntries: { type: [mongoose.Schema.Types.Mixed], default: [] },
     totals: {

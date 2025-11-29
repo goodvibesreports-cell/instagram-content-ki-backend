@@ -1,245 +1,142 @@
+/* eslint-disable max-lines */
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.extractRealPostsFromAnyTikTokSchema = extractRealPostsFromAnyTikTokSchema;
 exports.extractVideoLinksFromAnyObject = extractVideoLinksFromAnyObject;
 exports.parseTikTokExport = parseTikTokExport;
-const SHARE_LINK_PREFIX = "https://www.tiktokv.com/share/video/";
-const LINK_PATTERNS = ["tiktok.com", "tiktokv.com", "tiktokv.eu"];
-const SECTION_DEFINITIONS = [{
-  name: "Post.Posts",
-  path: ["Post", "Posts", "VideoList"],
-  type: "posted"
+const POST_PATH = ["Your Public Activity", "Videos", "VideoList"];
+const FOLLOWER_PATH = ["Your Activity", "Follower", "FansList"];
+const HASHTAG_PATH = ["Your Activity", "Hashtag", "HashtagList"];
+const IGNORED_SECTIONS = [{
+  section: "Watch History",
+  path: ["Watch History", "VideoList"]
 }, {
-  name: "Post.RecentlyDeleted",
-  path: ["Post", "Recently Deleted Posts"],
-  arrayKey: "PostList",
-  type: "deleted"
+  section: "Like List",
+  path: ["Your Activity", "Like List", "ItemFavoriteList"]
 }, {
-  name: "Post.RecentlyDeletedVideos",
-  path: ["Post", "Recently Deleted Videos", "VideoList"],
-  type: "deleted"
+  section: "Share History",
+  path: ["Share History", "ShareHistoryList"]
 }, {
-  name: "Activity.Videos",
-  path: ["Activity", "Videos", "VideoList"],
-  type: "posted"
+  section: "Recently Deleted Posts",
+  path: ["Recently Deleted Posts", "PostList"]
 }, {
-  name: "Activity.AppLog.Videos",
-  path: ["Activity", "App Log", "Videos"],
-  arrayKey: "VideoList",
-  type: "posted"
+  section: "Recently Deleted Videos",
+  path: ["Recently Deleted Videos", "VideoList"]
 }, {
-  name: "Videos.VideoList",
-  path: ["Videos", "VideoList"],
-  type: "posted"
-}, {
-  name: "Videos.RecentlyDeleted",
-  path: ["Videos", "Recently Deleted Videos"],
-  arrayKey: "VideoList",
-  type: "deleted"
-}, {
-  name: "Activity.FavoriteVideos",
-  path: ["Activity", "Favorite Videos"],
-  arrayKey: "VideoList",
-  type: "posted"
-}, {
-  name: "Activity.LikeList",
-  path: ["Activity", "Like List"],
-  arrayKey: "ItemFavoriteList",
-  type: "posted"
-}, {
-  name: "Activity.FavoriteList",
-  path: ["Activity", "Favorite List"],
-  arrayKey: "FavoriteVideoList",
-  type: "posted"
-}, {
-  name: "Deleted.Videos",
-  path: ["Deleted", "Videos"],
-  arrayKey: "VideoList",
-  type: "deleted"
-}, {
-  name: "ShareHistory",
-  path: ["Share History", "ShareHistoryList"],
-  type: "watch"
-}, {
-  name: "Activity.VideoBrowsingHistory",
-  path: ["Activity", "Video Browsing History"],
-  arrayKey: "VideoList",
-  type: "watch"
-}, {
-  name: "WatchHistory",
-  path: ["WatchHistory", "VideoList"],
-  type: "watch"
-}, {
-  name: "Activity.Videos.Legacy",
-  path: ["Activity", "Videos"],
-  arrayKey: "VideoList",
-  type: "posted"
-}, {
-  name: "Videos.Legacy",
-  path: ["Videos"],
-  arrayKey: "VideoList",
-  type: "posted"
+  section: "Login History",
+  path: ["Your Activity", "Login History", "List"]
 }];
-const FOLLOWER_SECTIONS = [{
-  path: ["Followers", "Fans List"],
-  arrayKey: "FansList"
-}, {
-  path: ["Follower", "Fans List"],
-  arrayKey: "FansList"
-}, {
-  path: ["Followers", "FansList"]
-}, {
-  path: ["Followers", "Fans"],
-  arrayKey: "Fans"
-}];
-const FALLBACK_ARRAY_KEYS = ["VideoList", "ItemFavoriteList", "FavoriteVideoList", "List", "items"];
-const LIKES_KEYS = ["Likes", "Like Count", "LikeCount", "LikesCount", "Like", "Favorite"];
-const TITLE_KEYS = ["Title", "Text", "Caption", "Description"];
-const SOUND_KEYS = ["Sound", "Audio Name", "SoundName"];
-const LOCATION_KEYS = ["Location", "ShootLocation"];
-const COVER_KEYS = ["CoverImage", "Cover", "Thumbnail", "VideoCover", "Cover Url"];
-const DATE_FIELDS = ["Date", "Create Time", "CreationTime", "CreateTime", "Timestamp", "time", "Time", "DateCreated"];
-const FOLLOWER_NAME_KEYS = ["Nickname", "NickName", "Username", "User Name", "DisplayName", "Name"];
-const FOLLOWER_ID_KEYS = ["UserId", "User ID", "userid", "user_id"];
-const FOLLOWER_AVATAR_KEYS = ["Avatar", "Profile Photo", "ProfilePhoto", "Photo"];
-const FOLLOWER_DATE_KEYS = ["Date", "DateAdded", "Follow Time", "Time", "Create Time"];
-function normalizeNumber(value) {
-  if (value === null || value === undefined) return 0;
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  const parsed = Number(String(value).replace(/[^\d.-]/g, ""));
+const HASHTAG_REGEX = /#([\p{L}\p{N}_]+)/giu;
+
+function getNested(root, path = []) {
+  return path.reduce((node, segment) => (node && typeof node === "object" ? node[segment] : undefined), root);
+}
+
+function toArray(node) {
+  if (!node) return [];
+  if (Array.isArray(node)) return node;
+  if (Array.isArray(node.VideoList)) return node.VideoList;
+  if (Array.isArray(node.PostList)) return node.PostList;
+  if (Array.isArray(node.ItemFavoriteList)) return node.ItemFavoriteList;
+  if (Array.isArray(node.List)) return node.List;
+  if (Array.isArray(node.items)) return node.items;
+  return [];
+}
+
+function toNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  const parsed = Number(String(value ?? "").replace(/[^\d.-]/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
 }
-function sanitizeText(value) {
-  if (typeof value !== "string") return "";
-  const trimmed = value.trim();
-  if (!trimmed || ["n/a", "na", "none", "null", "undefined"].includes(trimmed.toLowerCase())) {
-    return "";
-  }
-  return trimmed;
+
+function extractHashtagsFromText(text = "") {
+  if (typeof text !== "string" || !text.trim()) return [];
+  const matches = text.match(HASHTAG_REGEX);
+  if (!matches) return [];
+  return [...new Set(matches.map(tag => tag.replace("#", "").toLowerCase()))];
 }
-function sanitizeAssetUrl(value) {
-  if (typeof value !== "string") return "";
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  return trimmed;
-}
-function isTikTokLink(link) {
-  if (typeof link !== "string") return false;
-  return LINK_PATTERNS.some(pattern => link.includes(pattern));
-}
-function normalizeDate(value) {
-  if (!value) return null;
-  if (typeof value === "number") {
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? null : d;
+
+function buildSnippet(payload, limit = 400) {
+  if (!payload) return null;
+  try {
+    const serialized = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+    return serialized.slice(0, limit);
+  } catch {
+    return null;
   }
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
-  }
-  const str = String(value).trim();
-  if (!str) return null;
-  const isoCandidate = /^\d{4}-\d{2}-\d{2}(?:\s|\T)\d{2}:\d{2}:\d{2}/.test(str) ? str.replace(" ", "T") : str;
-  const dateObj = new Date(isoCandidate);
-  return Number.isNaN(dateObj.getTime()) ? null : dateObj;
 }
-function coerceArray(node, preferredKey) {
-  if (!node) return null;
-  if (Array.isArray(node)) return node;
-  if (preferredKey && Array.isArray(node[preferredKey])) {
-    return node[preferredKey];
-  }
-  for (const key of FALLBACK_ARRAY_KEYS) {
-    if (Array.isArray(node[key])) {
-      return node[key];
-    }
-  }
-  return null;
-}
-function extractList(root, path = [], arrayKey) {
-  if (!root) return null;
-  let node = root;
-  for (const segment of path) {
-    if (!node || typeof node !== "object") {
-      return null;
-    }
-    node = node[segment];
-  }
-  return coerceArray(node, arrayKey);
-}
-function extractField(item, keys, transformer = v => v) {
-  for (const key of keys) {
-    if (key in item && item[key] !== undefined && item[key] !== null) {
-      return transformer(item[key]);
-    }
-  }
-  return undefined;
-}
-function buildVideo(item = {}, ctx = {}) {
+
+function normalizePost(item = {}, index = 0, fileName = "upload.json") {
   if (!item || typeof item !== "object") return null;
-  const candidateLink = item.Link || item.URL || item.VideoLink || item.Uri || item.href;
-  if (!candidateLink || !isTikTokLink(candidateLink) || candidateLink.startsWith(SHARE_LINK_PREFIX)) {
-    return null;
-  }
-  const rawDate = extractField(item, DATE_FIELDS) || item.Extra && extractField(item.Extra, DATE_FIELDS) || item.DateDeleted;
-  const dateObj = normalizeDate(rawDate);
-  if (!dateObj) {
-    return null;
-  }
-  const titleValue = sanitizeText(extractField(item, TITLE_KEYS) || item.caption || item.text);
-  const soundValue = sanitizeText(extractField(item, SOUND_KEYS));
-  const locationValue = sanitizeText(extractField(item, LOCATION_KEYS));
-  const coverImage = sanitizeAssetUrl(extractField(item, COVER_KEYS));
+  const link = typeof item.Link === "string" ? item.Link.trim() : item.link || "";
+  if (!link) return null;
+  const rawDate = item.Date || item.date || null;
+  const dateObj = rawDate ? new Date(rawDate) : null;
+  if (!dateObj || Number.isNaN(dateObj.getTime())) return null;
+  const caption = item.Title || item.Caption || "";
   return {
     platform: "tiktok",
+    id: link || `${fileName}-${index}`,
+    link,
     date: dateObj.toISOString(),
     timestamp: dateObj.getTime(),
-    link: candidateLink,
-    likes: normalizeNumber(extractField(item, LIKES_KEYS)),
-    title: titleValue || "Unbekanntes TikTok Video",
-    caption: titleValue || "Unbekanntes TikTok Video",
-    sound: soundValue || "Unbekannter Sound",
-    location: locationValue || "Unbekannt",
-    coverImage: coverImage || null,
-    sourceSection: ctx.sourceSection || "unknown",
-    originType: ctx.type || "posted",
-    isDeleted: Boolean(ctx.isDeleted)
+    likes: toNumber(item.Likes),
+    comments: toNumber(item.Comments),
+    shares: toNumber(item.Shares),
+    views: toNumber(item.Played),
+    caption,
+    sound: item.Sound || "",
+    location: item.Location || "",
+    coverImage: item.CoverImage || "",
+    hashtags: extractHashtagsFromText(caption),
+    meta: {
+      sourceFile: fileName,
+      raw: buildSnippet(item, 400)
+    }
   };
 }
-function normalizeFollowerEntry(entry = {}) {
-  const dateValue = extractField(entry, FOLLOWER_DATE_KEYS);
-  const dateObj = normalizeDate(dateValue);
-  if (!dateObj) {
-    return null;
-  }
+
+function normalizeFollower(entry = {}) {
+  if (!entry || typeof entry !== "object") return null;
+  const rawDate = entry.Date || entry.date || entry.Timestamp;
+  const dateObj = rawDate ? new Date(rawDate) : null;
+  if (!dateObj || Number.isNaN(dateObj.getTime())) return null;
   return {
-    username: sanitizeText(extractField(entry, FOLLOWER_NAME_KEYS) || entry.User || entry.NickName || "Follower"),
-    userId: sanitizeText(extractField(entry, FOLLOWER_ID_KEYS) || entry.UserName || entry.Id),
-    avatar: sanitizeAssetUrl(extractField(entry, FOLLOWER_AVATAR_KEYS)),
+    username: entry.UserName || entry.username || entry.NickName || "Follower",
+    userId: entry.UserId || entry.userId || null,
+    avatar: entry.Avatar || entry.avatar || null,
     date: dateObj.toISOString(),
     timestamp: dateObj.getTime()
   };
 }
-function addIgnored(ignoredMap, totals, reason, example) {
-  const entry = ignoredMap.get(reason) || {
-    reason,
-    count: 0,
-    examples: []
-  };
-  entry.count += 1;
-  if (example && entry.examples.length < 5 && !entry.examples.includes(example)) {
-    entry.examples.push(example);
-  }
-  ignoredMap.set(reason, entry);
-  totals.ignored += 1;
+
+function normalizeHashtag(entry = {}) {
+  if (!entry || typeof entry !== "object") return null;
+  const name = entry.HashtagName || entry.Name || entry.hashtag;
+  if (!name) return null;
+  return name.toString().trim().toLowerCase();
 }
-function isWatchSection(name) {
-  if (!name) return false;
-  const needle = name.toLowerCase();
-  return needle.includes("watch") || needle.includes("browsing") || needle.includes("history");
+
+function collectIgnoredEntries(root) {
+  const ignored = [];
+  IGNORED_SECTIONS.forEach(section => {
+    const data = getNested(root, section.path);
+    const count = toArray(data).length;
+    if (count > 0) {
+      ignored.push({
+        section: section.section,
+        reason: "ignored",
+        count
+      });
+    }
+  });
+  return ignored;
 }
+
 function extractVideoLinksFromAnyObject(node, currentPath = [], results = [], seenCollections = null) {
   if (!node || typeof node !== "object") {
     return results;
@@ -248,7 +145,7 @@ function extractVideoLinksFromAnyObject(node, currentPath = [], results = [], se
     if (seenCollections?.has(node)) {
       return results;
     }
-    const hasLinkEntries = node.some(entry => entry && typeof entry === "object" && isTikTokLink(entry.Link || entry.URL || entry.href));
+    const hasLinkEntries = node.some(entry => entry && typeof entry === "object" && (entry.Link || entry.URL));
     if (hasLinkEntries) {
       results.push({
         list: node,
@@ -259,117 +156,29 @@ function extractVideoLinksFromAnyObject(node, currentPath = [], results = [], se
     node.forEach((item, index) => extractVideoLinksFromAnyObject(item, [...currentPath, `#${index}`], results, seenCollections));
     return results;
   }
-  const keys = Object.keys(node);
-  if (isTikTokLink(node.Link || node.URL || node.href)) {
-    results.push({
-      list: [node],
-      sourceSection: currentPath.join(".") || "detected"
-    });
-    return results;
-  }
-  keys.forEach(key => {
+  Object.keys(node).forEach(key => {
     extractVideoLinksFromAnyObject(node[key], [...currentPath, key], results, seenCollections);
   });
   return results;
 }
-function parseTikTokExport(json, sourceFileName = "unknown") {
-  const videos = [];
-  const followerEvents = [];
-  const ignoredMap = new Map();
-  const seenKeys = new Set();
-  const totals = {
-    videos: 0,
-    ignored: 0,
-    watchHistory: 0
-  };
-  let primarySource = null;
-  const processedCollections = new WeakSet();
-  function pushVideo(item, ctx) {
-    const video = buildVideo(item, ctx);
-    if (!video) {
-      addIgnored(ignoredMap, totals, "invalid_video_entry", item?.Link || item?.URL || "missing-link");
-      return;
-    }
-    const dedupeKey = `${video.link}|${video.timestamp || ""}`;
-    if (seenKeys.has(dedupeKey)) return;
-    seenKeys.add(dedupeKey);
-    if (!primarySource && ctx.type !== "watch") {
-      primarySource = ctx.sourceSection || "auto";
-    }
-    videos.push(video);
-  }
-  SECTION_DEFINITIONS.forEach(section => {
-    const list = extractList(json, section.path, section.arrayKey);
-    if (!Array.isArray(list)) return;
-    processedCollections.add(list);
-    list.forEach(item => {
-      const link = item?.Link || item?.URL || item?.VideoLink;
-      if (!isTikTokLink(link)) {
-        addIgnored(ignoredMap, totals, "invalid_video_entry", link || section.name);
-        return;
-      }
-      if (section.type === "watch") {
-        totals.watchHistory += 1;
-        addIgnored(ignoredMap, totals, "watch_history", link);
-        return;
-      }
-      pushVideo(item, {
-        sourceSection: section.name,
-        isDeleted: section.type === "deleted",
-        type: section.type
-      });
-    });
-  });
-  const fallbackEntries = extractVideoLinksFromAnyObject(json, [], [], processedCollections);
-  fallbackEntries.forEach(({
-    list,
-    sourceSection
-  }) => {
-    if (!Array.isArray(list)) return;
-    list.forEach(item => {
-      const link = item?.Link || item?.URL;
-      if (!isTikTokLink(link)) return;
-      if (isWatchSection(sourceSection)) {
-        totals.watchHistory += 1;
-        addIgnored(ignoredMap, totals, "watch_history", link);
-        return;
-      }
-      pushVideo(item, {
-        sourceSection: sourceSection || "auto-detected"
-      });
-    });
-  });
-  FOLLOWER_SECTIONS.forEach(section => {
-    const list = extractList(json, section.path, section.arrayKey);
-    if (!Array.isArray(list)) return;
-    list.forEach((entry, idx) => {
-      const normalizedFollower = normalizeFollowerEntry(entry);
-      if (normalizedFollower) {
-        followerEvents.push(normalizedFollower);
-      } else {
-        addIgnored(ignoredMap, totals, "invalid_follower_entry", `${section.path.join(".")}#${idx}`);
-      }
-    });
-  });
-  totals.videos = videos.length;
-  const rawSnippet = (() => {
-    try {
-      return JSON.stringify(json, null, 2).split("\n").slice(0, 20).join("\n");
-    } catch {
-      return null;
-    }
-  })();
+
+function parseTikTokExport(raw, fileName = "upload.json") {
+  const root = raw?.TikTok || raw || {};
+  const postSection = getNested(root, POST_PATH);
+  const followerSection = getNested(root, FOLLOWER_PATH);
+  const hashtagSection = getNested(root, HASHTAG_PATH);
+
+  const posts = toArray(postSection)
+    .map((item, index) => normalizePost(item, index, fileName))
+    .filter(Boolean);
+  const followers = toArray(followerSection).map(normalizeFollower).filter(Boolean);
+  const hashtags = toArray(hashtagSection).map(normalizeHashtag).filter(Boolean);
+  const ignoredEntries = collectIgnoredEntries(root);
+
   return {
-    rawPlatform: "tiktok",
-    sourceType: primarySource || "auto-detected",
-    rawJsonSnippet: rawSnippet,
-    videos,
-    followers: followerEvents,
-    ignoredEntries: [...ignoredMap.values()],
-    totals
+    posts,
+    followers,
+    hashtags,
+    ignoredEntries
   };
-}
-function extractRealPostsFromAnyTikTokSchema(json) {
-  const result = parseTikTokExport(json);
-  return result.videos;
 }

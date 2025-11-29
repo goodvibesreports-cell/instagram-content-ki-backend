@@ -1,17 +1,16 @@
 "use strict";
 
 const WEEKDAY_LABELS = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
-const HOUR_WINDOW_MS = 60 * 60 * 1000;
 function getDateParts(item) {
   if (!item) return null;
   let timestamp = null;
-  if (typeof item.timestamp === "number" && Number.isFinite(item.timestamp)) {
-    timestamp = item.timestamp;
-  } else if (item.date) {
+  if (item.date) {
     const parsed = new Date(item.date);
     if (!Number.isNaN(parsed.getTime())) {
       timestamp = parsed.getTime();
     }
+  } else if (typeof item.timestamp === "number" && Number.isFinite(item.timestamp)) {
+    timestamp = item.timestamp;
   }
   if (timestamp === null) {
     return null;
@@ -81,7 +80,7 @@ function aggregateHashtags(items) {
   const map = new Map();
   items.forEach(item => {
     const hashtags = item.hashtags || item.meta?.hashtags || [];
-    hashtags.forEach(tag => {
+    [...new Set(hashtags)].forEach(tag => {
       if (!tag) return;
       const normalized = tag.toLowerCase();
       if (!map.has(normalized)) {
@@ -125,68 +124,142 @@ function computeAverages(items) {
     avgComments: totals.comments / items.length
   };
 }
+function resolveChronoBounds(items = []) {
+  const timestamps = items
+    .map((item) => {
+      if (typeof item.timestamp === "number" && Number.isFinite(item.timestamp)) {
+        return item.timestamp;
+      }
+      if (item.date) {
+        const parsed = new Date(item.date);
+        if (!Number.isNaN(parsed.getTime())) {
+          return parsed.getTime();
+        }
+      }
+      return null;
+    })
+    .filter((value) => typeof value === "number");
+  if (!timestamps.length) {
+    return {
+      firstPostDate: null,
+      lastPostDate: null
+    };
+  }
+  const first = new Date(Math.min(...timestamps));
+  const last = new Date(Math.max(...timestamps));
+  return {
+    firstPostDate: first.toISOString(),
+    lastPostDate: last.toISOString()
+  };
+}
 function analyzePlatform(items = []) {
   return {
     itemCount: items.length,
     bestPostingHours: aggregateHours(items),
     bestWeekdays: aggregateWeekdays(items),
     topHashtags: aggregateHashtags(items),
-    ...computeAverages(items)
+    ...computeAverages(items),
+    ...resolveChronoBounds(items)
   };
 }
-function buildFollowerTimeline(followers = []) {
+
+function coerceTimestamp(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.getTime();
+}
+
+function normalizeFollowerEvents(followers = []) {
+  return followers
+    .map((entry) => {
+      const timestamp = coerceTimestamp(entry.timestamp || entry.date);
+      if (!timestamp) return null;
+      return {
+        username: entry.username || "Follower",
+        date: new Date(timestamp).toISOString(),
+        timestamp
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.timestamp - b.timestamp);
+}
+
+function buildFollowerTimeline(followerEvents = []) {
   const buckets = new Map();
-  followers.forEach((entry) => {
-    const date = new Date(entry.timestamp || entry.date);
-    if (!date || Number.isNaN(date.getTime())) return;
-    const key = date.toISOString().slice(0, 10);
+  followerEvents.forEach((event) => {
+    const key = event.date.slice(0, 10);
     buckets.set(key, (buckets.get(key) || 0) + 1);
   });
   return [...buckets.entries()]
     .map(([date, count]) => ({ date, count }))
     .sort((a, b) => new Date(a.date) - new Date(b.date));
 }
-function findClosestPost(timestamp, posts = []) {
-  let closest = null;
-  posts.forEach((post) => {
-    if (typeof post.timestamp !== "number") return;
-    const diff = Math.abs(post.timestamp - timestamp);
-    if (diff <= HOUR_WINDOW_MS && (!closest || diff < closest.diff)) {
-      closest = { post, diff };
-    }
-  });
-  return closest?.post || null;
-}
-function analyzeFollowerGrowth(followers = [], posts = []) {
+
+function analyzeFollowerImpact(posts = [], followers = []) {
   if (!followers.length) {
     return null;
   }
-  const timeline = buildFollowerTimeline(followers);
-  const postsWithTime = posts.filter((post) => typeof post.timestamp === "number");
-  const matchCounts = new Map();
-  let matchedTotal = 0;
-  followers.forEach((follower) => {
-    const match = findClosestPost(follower.timestamp, postsWithTime);
-    if (!match) return;
-    matchedTotal += 1;
-    const key = match.id || match.link || String(match.timestamp);
-    const existing = matchCounts.get(key) || {
-      postId: match.id || key,
-      link: match.link || "",
-      caption: match.caption || match.title || "",
-      followers: 0
+  const followerEvents = normalizeFollowerEvents(followers);
+  if (!followerEvents.length) {
+    return null;
+  }
+  const timeline = buildFollowerTimeline(followerEvents);
+  const sortedPosts = posts
+    .map((post) => {
+      const timestamp = coerceTimestamp(post.timestamp || post.date);
+      if (!timestamp) return null;
+      return {
+        id: post.id || post.link || String(timestamp),
+        link: post.link || "",
+        caption: post.caption || post.title || "",
+        timestamp
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.timestamp - b.timestamp);
+  if (!sortedPosts.length) {
+    return {
+      totalFollowers: followerEvents.length,
+      followerTimeline: timeline,
+      postGains: [],
+      topPost: null
     };
-    existing.followers += 1;
-    matchCounts.set(key, existing);
+  }
+  const gainsMap = new Map();
+  let pointer = 0;
+  followerEvents.forEach((event) => {
+    if (event.timestamp < sortedPosts[0].timestamp) {
+      return;
+    }
+    while (pointer < sortedPosts.length - 1 && event.timestamp >= sortedPosts[pointer + 1].timestamp) {
+      pointer += 1;
+    }
+    const currentPost = sortedPosts[pointer];
+    if (!currentPost || event.timestamp < currentPost.timestamp) {
+      return;
+    }
+    const key = currentPost.id;
+    const bucket = gainsMap.get(key) || {
+      postId: currentPost.id,
+      link: currentPost.link,
+      caption: currentPost.caption,
+      followersGained: 0
+    };
+    bucket.followersGained += 1;
+    gainsMap.set(key, bucket);
   });
-  const topMatch = [...matchCounts.values()].sort((a, b) => b.followers - a.followers)[0] || null;
+  const postGains = [...gainsMap.values()].sort((a, b) => b.followersGained - a.followersGained || a.postId.localeCompare(b.postId));
   return {
-    followersGained: followers.length,
+    totalFollowers: followerEvents.length,
     followerTimeline: timeline,
-    matchedFollowers: matchedTotal,
-    postThatGainedMostFollowers: topMatch
+    postGains,
+    topPost: postGains[0] || null
   };
 }
+
 function analyzeUnifiedItems(items = [], followers = []) {
   const perPlatformBuckets = {};
   items.forEach(item => {
@@ -198,11 +271,11 @@ function analyzeUnifiedItems(items = [], followers = []) {
   Object.entries(perPlatformBuckets).forEach(([platform, bucketItems]) => {
     perPlatform[platform] = analyzePlatform(bucketItems);
   });
-  const followerGrowth = analyzeFollowerGrowth(followers, items) || null;
+  const followerStats = analyzeFollowerImpact(items, followers);
   return {
     perPlatform,
     global: analyzePlatform(items),
-    followerGrowth
+    follower: followerStats
   };
 }
 

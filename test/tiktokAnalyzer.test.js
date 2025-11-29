@@ -88,31 +88,33 @@ test("Creator DNA liefert vollständige Felder", () => {
 
 test("TikTok Parser und spezifischer Analyzer liefern konsistente Ergebnisse", () => {
   const raw = {
-    Post: {
-      Posts: {
-        VideoList: [
-          {
-            Date: "2025-11-20 08:00:00",
-            Link: "https://video-no1a.tiktokv.eu/storage/v1/pipeline-1.mp4",
-            Likes: "120",
-            Sound: "Pipeline Sound",
-            Title: "Creator Growth"
-          },
-          {
-            Date: "2025-11-21 10:00:00",
-            Link: "https://video-no1a.tiktokv.eu/storage/v1/pipeline-2.mp4",
-            Likes: "80",
-            Sound: "Pipeline Sound",
-            Title: "Creator Stories"
-          }
-        ]
+    TikTok: {
+      "Your Public Activity": {
+        Videos: {
+          VideoList: [
+            {
+              Date: "2025-11-20 08:00:00",
+              Link: "https://video-no1a.tiktokv.eu/storage/v1/pipeline-1.mp4",
+              Likes: "120",
+              Sound: "Pipeline Sound",
+              Title: "Creator Growth"
+            },
+            {
+              Date: "2025-11-21 10:00:00",
+              Link: "https://video-no1a.tiktokv.eu/storage/v1/pipeline-2.mp4",
+              Likes: "80",
+              Sound: "Pipeline Sound",
+              Title: "Creator Stories"
+            }
+          ]
+        }
       }
     }
   };
 
   const parsed = parseTikTokExport(raw, "pipeline.json");
-  const analysis = analyzeTikTokVideos(parsed.videos);
-  assert.equal(parsed.videos.length, 2);
+  const analysis = analyzeTikTokVideos(parsed.posts);
+  assert.equal(parsed.posts.length, 2);
   assert.equal(analysis.globalStats.totalVideos, 2);
   assert.ok(analysis.topVideos.length > 0);
   assert.equal(analysis.topVideos[0].sound, "Pipeline Sound");

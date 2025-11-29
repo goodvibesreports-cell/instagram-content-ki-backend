@@ -126,18 +126,29 @@ function detectPlatformAndContent(json, fileName) {
 }
 function normalizeTikTokPayload(json, fileName) {
   const parsed = (0, _tiktokParser.parseTikTokExport)(json, fileName);
-  const normalizedPosts = parsed.videos.map(video => (0, _normalizedPost.normalizedFromTikTokVideo)({
+  const rawPosts = parsed.posts || [];
+  const normalizedPosts = rawPosts.map(video => (0, _normalizedPost.normalizedFromTikTokVideo)({
     ...video,
     sourceFile: fileName
   })).filter(Boolean);
+  const ignoredEntries = parsed.ignoredEntries || [];
+  const ignoredTotal = ignoredEntries.reduce((sum, entry) => sum + (entry.count || 0), 0);
+  const watchHistoryEntry = ignoredEntries.find((entry) => (entry.section || "").toLowerCase().includes("watch history"));
   return {
     platform: "tiktok",
     detectedType: parsed.sourceType || _platformDetector.PLATFORM_DATA_TYPES.POSTS,
-    videos: parsed.videos,
+    videos: rawPosts,
     normalizedPosts,
-    ignoredEntries: parsed.ignoredEntries,
+    followers: parsed.followers || [],
+    ignoredEntries,
     rawSnippet: parsed.rawJsonSnippet,
     totals: parsed.totals
+      ? parsed.totals
+      : {
+          videos: rawPosts.length,
+          ignored: ignoredTotal,
+          watchHistory: watchHistoryEntry?.count || 0
+        }
   };
 }
 function normalizePayloadByPlatform(json, fileName, platform) {
